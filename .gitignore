@@ -1,0 +1,16 @@
+# 项目虚拟环境
+.venv/
+.venv313
+
+# PyCharm配置
+.idea/
+
+# Python缓存
+__pycache__/
+*.pyc
+
+# Jupyter临时文件
+.ipynb_checkpoints/
+
+# 环境变量和敏感信息
+.env
