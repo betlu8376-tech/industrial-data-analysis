@@ -1,4 +1,4 @@
-from operator import index
+
 from pathlib import Path
 
 import pandas as pd
@@ -23,12 +23,12 @@ machine_df = pd.read_csv(data_path)
 # machine_df.info()
 
 
-failure_count=machine_df["Machine failure"].value_counts().sort_index()
+failure_counts=machine_df["Machine failure"].value_counts().sort_index()
 print("\n设备状态数量：")
-print(failure_count)
+print(failure_counts)
 
-failure_rate = (machine_df["Machine failure"]==0).mean()
-print(f"\n设备合格率：{failure_rate:.2%}")
+normal_rate = (machine_df["Machine failure"]==0).mean()
+print(f"\n设备合格率：{normal_rate:.2%}")
 
 # 统计不同产品类型的数量
 type_counts = machine_df["Type"].value_counts()
