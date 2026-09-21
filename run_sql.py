@@ -11,7 +11,8 @@ database_path = (
     project_root / "data" / "processed" / "industrial_data.db"
 )
 
-sql_path = project_root / "sql" / "01_failure_summary.sql"
+# sql_path = project_root / "sql" / "01_failure_summary.sql"
+sql_path = project_root / "sql" / "02_failure_by_product_type.sql"
 
 if not database_path.exists():
     raise FileNotFoundError(
@@ -24,4 +25,4 @@ with closing(sqlite3.connect(database_path)) as connection:
     result_df = pd.read_sql_query(query, connection)
 
 print("SQL查询结果：")
-print(result_df.to_string(index=False))
+print(result_df.to_string(index=True))#index决定是否显示编号
