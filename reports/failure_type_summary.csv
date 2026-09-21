@@ -1,0 +1,6 @@
+﻿failure_type,total_counts,failure_counts,failure_percent
+HDF,10000,115,1.15
+OSF,10000,98,0.98
+PWF,10000,95,0.95
+TWF,10000,46,0.46
+RNF,10000,19,0.19

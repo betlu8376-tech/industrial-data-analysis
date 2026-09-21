@@ -12,7 +12,8 @@ database_path = (
 )
 
 # sql_path = project_root / "sql" / "01_failure_summary.sql"
-sql_path = project_root / "sql" / "02_failure_by_product_type.sql"
+# sql_path = project_root / "sql" / "02_failure_by_product_type.sql"
+sql_path = project_root / "sql" / "03_failure_type_summary.sql"
 
 if not database_path.exists():
     raise FileNotFoundError(
@@ -29,7 +30,8 @@ print(result_df.to_string(index=True))#index决定是否显示编号
 
 
 #set export path
-output_path = project_root / "reports" / "failure_by_product_type.csv"
+# output_path = project_root / "reports" / "failure_by_product_type.csv"
+output_path = project_root / "reports" / "failure_type_summary.csv"
 
 # ensure path exist
 output_path.parent.mkdir(parents=True, exist_ok=True)
