@@ -26,3 +26,15 @@ with closing(sqlite3.connect(database_path)) as connection:
 
 print("SQL查询结果：")
 print(result_df.to_string(index=True))#index决定是否显示编号
+
+
+#set export path
+output_path = project_root / "reports" / "failure_by_product_type.csv"
+
+# ensure path exist
+output_path.parent.mkdir(parents=True, exist_ok=True)
+
+# output to csv
+result_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+print(f"\n分析结果已保存到：{output_path}")
