@@ -1,0 +1,6 @@
+﻿tool_wear_group,total_nums,failure_counts,failure_rate_percent
+0-49,2349,52,2.21
+50-99,2271,51,2.25
+100-149,2290,52,2.27
+150-199,2289,61,2.66
+200+,801,123,15.36
