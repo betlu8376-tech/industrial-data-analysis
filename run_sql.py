@@ -15,7 +15,9 @@ database_path = (
 # sql_path = project_root / "sql" / "02_failure_by_product_type.sql"
 # sql_path = project_root / "sql" / "03_failure_type_summary.sql"
 # sql_path = project_root / "sql" / "04_failure_condition_comparison.sql"
-sql_path = project_root / "sql" / "05_failure_by_tool_wear.sql"
+# sql_path = project_root / "sql" / "05_failure_by_tool_wear.sql"
+sql_path = project_root / "sql" / "06_failure_by_torque.sql"
+
 
 if not database_path.exists():
     raise FileNotFoundError(
@@ -35,7 +37,9 @@ print(result_df.to_string(index=True))#index决定是否显示编号
 # output_path = project_root / "reports" / "failure_by_product_type.csv"
 # output_path = project_root / "reports" / "failure_type_summary.csv"
 # output_path = project_root / "reports" / "04_failure_condition_comparison.csv"
-output_path = project_root / "reports" / "05_failure_by_tool_wear.csv"
+# output_path = project_root / "reports" / "05_failure_by_tool_wear.csv"
+output_path = project_root / "reports" / "06_plot_failure_by_torque.csv"
+
 
 # ensure path exist
 output_path.parent.mkdir(parents=True, exist_ok=True)
