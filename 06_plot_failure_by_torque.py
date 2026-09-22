@@ -8,7 +8,7 @@ project_root = Path(__file__).resolve().parent
 csv_path=(
     project_root
     / "reports"
-    / "06_plot_failure_by_torque.csv"
+    / "06_failure_by_torque.csv"
 )
 
 figure_path = (

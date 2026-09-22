@@ -38,7 +38,7 @@ print(result_df.to_string(index=True))#index决定是否显示编号
 # output_path = project_root / "reports" / "failure_type_summary.csv"
 # output_path = project_root / "reports" / "04_failure_condition_comparison.csv"
 # output_path = project_root / "reports" / "05_failure_by_tool_wear.csv"
-output_path = project_root / "reports" / "06_plot_failure_by_torque.csv"
+output_path = project_root / "reports" / "06_failure_by_torque.csv"
 
 
 # ensure path exist
