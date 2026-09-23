@@ -157,6 +157,15 @@ python prepare_database.py
 python run_sql.py
 ```
 
+也可以使用 `run_sql2.py`，无需修改脚本中的路径：
+### 执行指定 SQL
+```powershell
+python run_sql2.py --sql sql/06_failure_by_torque.sql
+```
+### 按顺序执行全部 SQL
+```powershell
+python run_sql2.py --all
+```
 ### 4. 生成图表
 
 例如生成扭矩分析图：

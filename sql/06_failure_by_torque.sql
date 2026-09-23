@@ -12,5 +12,5 @@ SELECT
 FROM machine_records
 GROUP BY torque_nm_group
 
-ORDER BY MIN(tool_wear_min);
+ORDER BY MIN(torque_nm);
 
