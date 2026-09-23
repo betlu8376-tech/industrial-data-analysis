@@ -6,6 +6,8 @@ import sys
 
 import pandas as pd
 
+import logging
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = (
@@ -107,9 +109,15 @@ def main() -> int:
             sqlite3.Error,
             pd.errors.DatabaseError,
         ) as error:
-            print(
-                f"执行 {sql_path.name} 失败：{error}",
-                file=sys.stderr,
+            # print(
+            #     f"执行 {sql_path.name} 失败：{error}",
+            #     file=sys.stderr,
+            # )
+
+            logging.error(
+                "执行 %s 失败：%s",
+                sql_path.name,
+                error,
             )
             return 1
 
