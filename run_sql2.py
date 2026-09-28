@@ -8,11 +8,14 @@ import pandas as pd
 
 import logging
 
+import os
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DATABASE_PATH = (
+DEFAULT_DATABASE_PATH = (
     PROJECT_ROOT / "data" / "processed" / "industrial_data.db"
 )
+DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(DEFAULT_DATABASE_PATH)))
 
 
 OUTPUT_NAMES = {
