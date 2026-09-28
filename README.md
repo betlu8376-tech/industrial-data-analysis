@@ -166,6 +166,31 @@ python run_sql2.py --sql sql/06_failure_by_torque.sql
 ```powershell
 python run_sql2.py --all
 ```
+### 指定 CSV 输出目录
+
+在项目根目录运行时，可以用 `--output` 指定 CSV 的保存目录：
+
+```powershell
+python run_sql2.py --sql sql/01_failure_summary.sql --output reports/custom
+```
+
+不提供 `--output` 时，CSV 默认保存到项目的 `reports` 目录。
+
+### 指定数据库路径
+
+默认使用 `data/processed/industrial_data.db`。在项目根目录的 PowerShell 中，可以设置 `DATABASE_PATH` 后运行：
+
+```powershell
+$env:DATABASE_PATH = "data\processed\industrial_data.db"
+python run_sql2.py --sql sql/01_failure_summary.sql
+```
+
+若要使用其他数据库，请将变量值改为对应的 SQLite 文件路径。该数据库需要包含 SQL 查询所用的表和字段。设置的变量只在当前终端及其启动的程序中生效；清除后恢复默认路径：
+
+```powershell
+Remove-Item Env:\DATABASE_PATH
+```
+
 ### 4. 生成图表
 
 例如生成扭矩分析图：
