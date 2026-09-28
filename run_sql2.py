@@ -39,6 +39,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="依次执行 sql 文件夹中的全部 SQL",
     )
+
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=PROJECT_ROOT / "reports",
+        help="CSV 输出目录，默认为项目下的 reports"
+    )
     return parser.parse_args()
 
 
@@ -100,7 +107,7 @@ def main() -> int:
             sql_path.stem,
             f"{sql_path.stem}.csv",
         )
-        output_path = PROJECT_ROOT / "reports" / output_name
+        output_path = args.output/ output_name
 
         try:
             result_df = execute_query(DATABASE_PATH, sql_path)
