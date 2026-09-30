@@ -1,6 +1,8 @@
+from PIL.ImtImagePlugin import field
+
 from run_sql2 import DATABASE_PATH,PROJECT_ROOT,execute_query
 
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from typing import Annotated
 from fastapi import FastAPI, Query,Path,HTTPException
 
@@ -35,8 +37,8 @@ def get_metric(metric_name: str) -> dict[str,int|float]:
     return {f"{metric_name}": result[metric_name]}
 
 class FailureRateRequest(BaseModel):
-    total_count: int
-    failure_count: int
+    total_count: int=Field(gt=0)
+    failure_count: int=Field(ge=0)
 
 class FailureRateResponse(BaseModel):
     failure_rate_percent: float
@@ -46,5 +48,8 @@ class FailureRateResponse(BaseModel):
 
 
 def calculate_failure_rate(data: FailureRateRequest) -> FailureRateResponse:
+    if data.total_count < data.failure_count:
+        raise HTTPException(status_code=422, detail="failure_count cannot exceed total_count")
+
     rate=round(100.0*data.failure_count/data.total_count,2)
     return FailureRateResponse(failure_rate_percent=rate)

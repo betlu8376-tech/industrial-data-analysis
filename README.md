@@ -1,6 +1,6 @@
 # Industrial Data Analysis
 
-基于 AI4I 2020 预测性维护数据集，使用 Python、Pandas、SQLite 和 Matplotlib 分析工业设备的运行状态与故障特征。
+基于 AI4I 2020 预测性维护数据集，使用 Python、Pandas、SQLite 和 Matplotlib 分析工业设备的运行状态与故障特征，并通过 FastAPI 提供统计查询和故障率计算接口。
 
 ## 项目目标
 
@@ -9,6 +9,8 @@
 - 分析产品类型、故障类型及运行条件与设备故障的关系
 - 使用 Matplotlib 展示分析结果
 - 使用 Git 和 GitHub 管理项目版本
+- 使用 FastAPI 提供 JSON 接口，通过 Pydantic 校验输入与输出
+- 使用 pytest 自动测试 SQL 查询和接口行为
 
 ## 数据集
 
@@ -30,6 +32,9 @@
 - Pandas
 - SQLite
 - Matplotlib
+- FastAPI、Uvicorn
+- Pydantic
+- pytest、HTTPX（接口测试）
 - Git
 - GitHub
 
@@ -128,6 +133,10 @@ industrial-data-analysis/
 ├── sql/                             # SQL 分析脚本
 ├── prepare_database.py              # 数据清洗与数据库创建
 ├── run_sql.py                       # 执行 SQL 并导出结果
+├── run_sql2.py                      # 支持命令行参数的 SQL 执行工具
+├── api.py                           # FastAPI 查询与计算接口
+├── test_run_sql2.py                 # SQL 工具测试
+├── test_api.py                      # 接口测试
 ├── plot_failure_rate.py             # 基础故障率图表
 ├── 04_plot_condition_comparison.py  # 运行条件对比图
 ├── 05_plot_failure_by_tool_wear.py  # 刀具磨损分析图
@@ -140,7 +149,7 @@ industrial-data-analysis/
 ### 1. 安装依赖
 
 ```powershell
-pip install pandas matplotlib
+python -m pip install pandas matplotlib
 ```
 
 ### 2. 创建 SQLite 数据库
@@ -205,6 +214,127 @@ python 06_plot_failure_by_torque.py
 reports/figures/
 ```
 
+## API 服务
+
+API 提供两类功能：读取数据库中的统计结果，以及根据客户端提交的数量计算故障率。所有业务接口返回 JSON。
+
+### 1. 安装接口与测试依赖
+
+在项目目录中，使用已选定的 Python 环境执行：
+
+```powershell
+python -m pip install fastapi uvicorn pydantic pillow pytest httpx
+```
+
+当前 `api.py` 还包含 `PIL.ImtImagePlugin` 的导入，因此启动时需要 Pillow。这个导入没有参与接口逻辑；移除该导入后，接口本身不再需要 Pillow。
+
+### 2. 启动服务
+
+从项目根目录运行：
+
+```powershell
+python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+`api:app` 表示加载 `api.py` 中的 `app` 对象。`127.0.0.1` 只供当前电脑访问，`8000` 是服务端口。按 `Ctrl+C` 停止服务；上述命令未开启自动重载，修改接口代码后需要保存并重启。
+
+如果 PowerShell 的 Conda 初始化失败，可以直接指定当前开发环境的解释器。以下路径仅适用于本机，其他电脑应替换为自己的环境路径：
+
+```powershell
+& 'D:\anaconda\envs\industrial-ai\python.exe' -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+服务启动后，打开 [交互式接口文档](http://127.0.0.1:8000/docs)。展开接口，点击 **Try it out**，填写参数或请求体，再点击 **Execute** 发送真实请求。
+
+### 3. 接口说明
+
+| 方法 | 路径 | 功能 |
+|---|---|---|
+| GET | `/summary` | 查询整体故障统计 |
+| GET | `/summary/{metric_name}` | 查询单个统计指标 |
+| POST | `/failure-rate` | 根据提交的数量计算故障率，不读取或写入数据库 |
+
+两个 GET 接口依赖 SQLite 数据库和 `sql/01_failure_summary.sql`。数据库默认位于 `data/processed/industrial_data.db`，可通过 `DATABASE_PATH` 环境变量指定其他数据库，规则与 SQL 工具相同。
+
+#### GET /summary
+
+浏览器访问 [整体统计](http://127.0.0.1:8000/summary)，当前数据集的响应为：
+
+```json
+{
+  "total_count": 10000,
+  "normal_count": 9661,
+  "failure_count": 339,
+  "failure_rate_percent": 3.39
+}
+```
+
+可选查询参数 `decimals` 为整数，默认值为 `2`，允许范围为 `0` 到 `2`。例如访问 [保留一位小数的统计](http://127.0.0.1:8000/summary?decimals=1)，故障率为 `3.4`。参数为 `abc`、`-1` 或 `3` 时返回 `422`。
+
+#### GET /summary/{metric_name}
+
+`metric_name` 是路径参数，可选值为 `total_count`、`normal_count`、`failure_count` 和 `failure_rate_percent`。
+
+例如访问 [故障数量](http://127.0.0.1:8000/summary/failure_count)，响应为：
+
+```json
+{"failure_count": 339}
+```
+
+指标不存在时返回 `404` 和 `{"detail": "Metric not found"}`。
+
+#### POST /failure-rate
+
+在 `/docs` 中选择 **POST /failure-rate**，提交 JSON 请求体：
+
+```json
+{
+  "total_count": 10000,
+  "failure_count": 339
+}
+```
+
+成功时返回 `200`：
+
+```json
+{"failure_rate_percent": 3.39}
+```
+
+计算公式为 `100 × failure_count / total_count`，结果使用 Python 的 `round(..., 2)` 舍入，不保证显示固定两位小数。
+
+输入规则：
+
+- 两个字段均必填，类型为整数。
+- `total_count` 必须大于 `0`。
+- `failure_count` 必须大于等于 `0`，且不能超过 `total_count`。
+- `failure_count` 为 `0` 时故障率为 `0%`，等于总数时为 `100%`。
+
+字段校验失败时返回 `422`，错误信息指出字段位置。故障数超过总数时也返回 `422`，响应为：
+
+```json
+{"detail": "failure_count cannot exceed total_count"}
+```
+
+浏览器地址栏直接访问 `/failure-rate` 会发送 GET 请求，而该接口只接受 POST，因此返回 `405 Method Not Allowed`。请使用 `/docs` 或支持 POST 的客户端。
+
+### 4. 自动测试
+
+在项目根目录执行：
+
+```powershell
+python -m pytest test_run_sql2.py test_api.py -v
+```
+
+接口测试通过 `TestClient` 直接调用应用，不需要先启动 Uvicorn。当前共 10 个测试：4 个 SQL 工具测试、6 个接口测试。接口测试覆盖正常计算、故障数超过总数、总数为零、故障数为负数、零故障和全部故障。
+
+本机也可以直接指定解释器：
+
+```powershell
+& 'D:\anaconda\envs\industrial-ai\python.exe' -m pytest test_run_sql2.py test_api.py -v
+```
+
+预期结果为 `10 passed`。若同时出现依赖库的弃用警告，应结合测试结果区分警告与失败；警告本身不等于测试失败。
+
 ## 分析结论
 
 分析结果表明，设备故障与刀具磨损和扭矩具有明显关联：
@@ -218,7 +348,6 @@ reports/figures/
 
 ## 后续改进
 
-- 自动化执行全部 SQL 分析
 - 增加数据分布和相关性分析
 - 增加异常值检测
 - 尝试建立设备故障预测模型
