@@ -1,4 +1,5 @@
 import openai
+from fontTools.unicodedata import script
 from openai import OpenAI
 import os
 import zai
@@ -78,7 +79,13 @@ def main():
         print("模型请求超时，请稍后重试。")
         return
 
-    print(response.choices[0].message.content)
+    content=response.choices[0].message.content
+    if content and content.strip():
+        print(content)
+        return
+    else:
+        print("模型未返回有效正文，请稍后重试。")
+        return
 
 
 
