@@ -88,3 +88,24 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
     output = capsys.readouterr().out
     assert expexted_text in output
     client.chat.completions.create.assert_called_once()
+
+def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    monkeypatch.delenv("ZHIPU_API_KEY",raising=False)
+    with(
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.OpenAI")as mock_openai
+
+    ):
+
+
+        with pytest.raises(RuntimeError,match="ZHIPU_API_KEY is not configured"):
+            main()
+
+        mock_openai.assert_not_called()
