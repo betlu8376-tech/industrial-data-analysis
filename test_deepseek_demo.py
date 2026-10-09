@@ -1,5 +1,12 @@
 from deepseek_demo import build_summary_prompt
 
+from unittest.mock import Mock, patch
+
+import openai
+import pytest
+
+from deepseek_demo import main
+
 
 def test_build_summary_prompt() -> None:
     summary = {
@@ -29,3 +36,55 @@ def test_build_summary_prompt_with_different_data() -> None:
     assert "故障数为 10" in prompt
     assert "故障率为 5.0%" in prompt
     assert "不要推测故障原因" in prompt
+
+def test_main_handles_timeout(capsys: pytest.CaptureFixture[str]) -> None:
+    """模拟请求超时，检查程序是否提示并退出。"""
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    client = Mock()
+    client.chat.completions.create.side_effect = (
+        openai.APITimeoutError(request=Mock())
+    )
+
+    with (
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.OpenAI", return_value=client),
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert "模型请求超时，请稍后重试。" in output
+    client.chat.completions.create.assert_called_once()
+
+
+def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    response=Mock()
+    response.choices = [Mock()]
+    expexted_text="总记录数为10000，故障数为339，故障率为3.39%。"
+    response.choices[0].message.content = expexted_text
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+    ):
+        main()
+    output = capsys.readouterr().out
+    assert expexted_text in output
+    client.chat.completions.create.assert_called_once()

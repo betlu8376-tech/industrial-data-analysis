@@ -6,6 +6,8 @@ from run_sql2 import DATABASE_PATH, PROJECT_ROOT, execute_query
 
 
 
+
+
 def build_summary_prompt(summary: dict[str, int | float]) -> str:
     prompt = (
         f"总记录数为 {summary['total_count']}，"
@@ -32,10 +34,18 @@ def main():
 
     if not api_key:
         raise RuntimeError("ZHIPU_API_KEY is not configured")
+    # client = OpenAI(
+    #     api_key=api_key,
+    #     base_url="https://open.bigmodel.cn/api/paas/v4",
+    # )
+
     client = OpenAI(
         api_key=api_key,
         base_url="https://open.bigmodel.cn/api/paas/v4",
+        timeout=30.0,
+        max_retries=0,
     )
+
 
     print("Client ready")
 
@@ -52,24 +62,26 @@ def main():
     #     max_tokens=128,
     #     extra_body={"thinking": {"type": "disabled"}},
     # )
-    response = client.chat.completions.create(
-        model="glm-5.3-flash",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-
-            }
-        ],
-        max_tokens=2048,
-        extra_body={"thinking": {"type": "enabled"}},
-    )
+    try:
+        response = client.chat.completions.create(
+            model="glm-5.3-flash",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            max_tokens=2048,
+            extra_body={"thinking": {"type": "enabled"}},
+        )
+    except openai.APITimeoutError:
+        print("模型请求超时，请稍后重试。")
+        return
 
     print(response.choices[0].message.content)
-    # print(response.choices[0])
-    print("结束原因：", response.choices[0].finish_reason)
-    print("回答正文：", repr(response.choices[0].message.content))
-    print("用量：", response.usage)
+
+
+
 # print(response.usage)
 
 if __name__ == "__main__":
