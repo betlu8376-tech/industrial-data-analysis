@@ -113,93 +113,11 @@ def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_openai.assert_not_called()
 
 
-# def test_main_empty_content(capsys: pytest.CaptureFixture[str]) -> None:
-#     dataframe = Mock()
-#     dataframe.to_dict.return_value = [{
-#         "total_count": 10000,
-#         "failure_count": 339,
-#         "failure_rate_percent": 3.39,
-#     }]
-#
-#     response=Mock()
-#     response.choices = [Mock()]
-#     response.choices[0].message.content = ""
-#
-#     client = Mock()
-#     client.chat.completions.create.return_value = response
-#
-#     with (
-#         patch("deepseek_demo.OpenAI", return_value=client),
-#         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
-#         patch("deepseek_demo.execute_query", return_value=dataframe),
-#
-#     ):
-#         main()
-#
-#     output = capsys.readouterr().out
-#     assert "模型未返回有效正文，请稍后重试。" in output
-#     client.chat.completions.create.assert_called_once()
-#
-#
-# def test_main_none_content(capsys: pytest.CaptureFixture[str]) -> None:
-#     dataframe = Mock()
-#     dataframe.to_dict.return_value = [{
-#         "total_count": 10000,
-#         "failure_count": 339,
-#         "failure_rate_percent": 3.39,
-#     }]
-#
-#     response=Mock()
-#     response.choices = [Mock()]
-#     response.choices[0].message.content =None
-#
-#     client = Mock()
-#     client.chat.completions.create.return_value = response
-#
-#     with (
-#         patch("deepseek_demo.OpenAI", return_value=client),
-#         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
-#         patch("deepseek_demo.execute_query", return_value=dataframe),
-#
-#     ):
-#         main()
-#
-#     output = capsys.readouterr().out
-#     assert "模型未返回有效正文，请稍后重试。" in output
-#     client.chat.completions.create.assert_called_once()
-#
-#
-#
-# def test_main_whitespace_content(capsys: pytest.CaptureFixture[str]) -> None:
-#     dataframe = Mock()
-#     dataframe.to_dict.return_value = [{
-#         "total_count": 10000,
-#         "failure_count": 339,
-#         "failure_rate_percent": 3.39,
-#     }]
-#
-#     response=Mock()
-#     response.choices = [Mock()]
-#     response.choices[0].message.content = "   "
-#
-#     client = Mock()
-#     client.chat.completions.create.return_value = response
-#
-#     with (
-#         patch("deepseek_demo.OpenAI", return_value=client),
-#         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
-#         patch("deepseek_demo.execute_query", return_value=dataframe),
-#
-#     ):
-#         main()
-#
-#     output = capsys.readouterr().out
-#     assert "模型未返回有效正文，请稍后重试。" in output
-#     client.chat.completions.create.assert_called_once()
 
 @pytest.mark.parametrize(
         "content",
-        ["",None,"   "]
+        ["",None,"   "],
+        ids=["empty","none","whitespace"]
     )
 def test_main_invalid_content(capsys: pytest.CaptureFixture[str], content: str | None ) -> None:
     dataframe = Mock()

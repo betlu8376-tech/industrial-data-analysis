@@ -52,3 +52,4 @@ if __name__ == "__main__":
     test_torque_group_order()
     test_non_sql_file()
     print("测试通过")
+
