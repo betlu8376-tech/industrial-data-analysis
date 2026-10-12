@@ -89,7 +89,20 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
         main()
     output = capsys.readouterr().out
     assert expexted_text in output
-    client.chat.completions.creatassert_called_once()
+    client.chat.completions.create.assert_called_once()
+
+    request_kwargs = client.chat.completions.create.call_args.kwargs
+    assert request_kwargs["model"] =="glm-5.3-flash"
+    assert request_kwargs["max_tokens"] ==2048
+
+    message = request_kwargs["messages"]
+    assert len(message)==1
+    assert message[0]["role"] == "user"
+
+    expexted_summary=dataframe.to_dict.return_value[0]
+    expected_prompt=build_summary_prompt(expexted_summary)
+    assert message[0]["content"] == expected_prompt
+
 
 def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     dataframe = Mock()
