@@ -10,6 +10,9 @@ import pytest
 from deepseek_demo import main
 
 
+from run_sql2 import PROJECT_ROOT,DATABASE_PATH
+
+
 def test_build_summary_prompt() -> None:
     summary = {
         "total_count": 10000,
@@ -84,7 +87,7 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
     with (
         patch("deepseek_demo.OpenAI", return_value=client),
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
-        patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
     ):
         main()
     output = capsys.readouterr().out
@@ -102,6 +105,11 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
     expexted_summary=dataframe.to_dict.return_value[0]
     expected_prompt=build_summary_prompt(expexted_summary)
     assert message[0]["content"] == expected_prompt
+
+
+    expexted_sql_path=PROJECT_ROOT / "sql" / "01_failure_summary.sql"
+    mock_query.assert_called_once_with(DATABASE_PATH,expexted_sql_path)
+    mock_query.assert_called_once()
 
 
 def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
