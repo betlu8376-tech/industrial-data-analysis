@@ -2,7 +2,7 @@ from _pytest import monkeypatch
 
 from deepseek_demo import build_summary_prompt
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, mock_open
 
 import openai
 import pytest
@@ -11,6 +11,8 @@ from deepseek_demo import main
 
 
 from run_sql2 import PROJECT_ROOT,DATABASE_PATH
+
+from report_schema import FailureReport
 
 
 def test_build_summary_prompt() -> None:
@@ -167,3 +169,20 @@ def test_main_invalid_content(capsys: pytest.CaptureFixture[str], content: str |
     output = capsys.readouterr().out
     assert "模型未返回有效正文，请稍后重试。" in output
     client.chat.completions.create.assert_called_once()
+
+
+def test_main_query_failure()-> None:
+    client = Mock()
+
+    with(
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", side_effect=FileNotFoundError("SQL file missing for test"))as mock_query,
+        patch("deepseek_demo.OpenAI", return_value=client)as mock_openai,
+    ):
+        with pytest.raises(FileNotFoundError,match="SQL file missing for test"):
+            main()
+
+    mock_query.assert_called_once()
+    mock_openai.assert_not_called()
+
+
