@@ -1,8 +1,9 @@
 from _pytest import monkeypatch
+from matplotlib.font_manager import json_dump
 
 from deepseek_demo import build_summary_prompt
 
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 
 import openai
 import pytest
@@ -13,6 +14,8 @@ from deepseek_demo import main
 from run_sql2 import PROJECT_ROOT,DATABASE_PATH
 
 from report_schema import FailureReport
+from pydantic import ValidationError
+import json
 
 
 def test_build_summary_prompt() -> None:
@@ -28,6 +31,12 @@ def test_build_summary_prompt() -> None:
     assert "故障数为 339" in prompt
     assert "故障率为 3.39%" in prompt
     assert "不要推测故障原因" in prompt
+    assert "只返回一个合法的 JSON 对象" in prompt
+    assert "不要 Markdown 代码围栏或额外说明" in prompt
+    for field_name in (
+        "total_count", "failure_count", "failure_rate_percent", "conclusion"
+    ):
+        assert f'"{field_name}"' in prompt
 
 
 def test_build_summary_prompt_with_different_data() -> None:
@@ -43,6 +52,12 @@ def test_build_summary_prompt_with_different_data() -> None:
     assert "故障数为 10" in prompt
     assert "故障率为 5.0%" in prompt
     assert "不要推测故障原因" in prompt
+    assert "只返回一个合法的 JSON 对象" in prompt
+    assert "不要 Markdown 代码围栏或额外说明" in prompt
+    for field_name in (
+        "total_count", "failure_count", "failure_rate_percent", "conclusion"
+    ):
+        assert f'"{field_name}"' in prompt
 
 def test_main_handles_timeout(capsys: pytest.CaptureFixture[str]) -> None:
     """模拟请求超时，检查程序是否提示并退出。"""
@@ -76,12 +91,21 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
         "total_count": 10000,
         "failure_count": 339,
         "failure_rate_percent": 3.39,
+
     }]
 
     response=Mock()
     response.choices = [Mock()]
     expexted_text="总记录数为10000，故障数为339，故障率为3.39%。"
-    response.choices[0].message.content = expexted_text
+    report_data = {
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+        "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+    }
+    response.choices[0].message.content = json.dumps(
+        report_data, ensure_ascii=False
+    )
 
     client = Mock()
     client.chat.completions.create.return_value = response
@@ -112,6 +136,10 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
     expexted_sql_path=PROJECT_ROOT / "sql" / "01_failure_summary.sql"
     mock_query.assert_called_once_with(DATABASE_PATH,expexted_sql_path)
     mock_query.assert_called_once()
+
+
+    assert output.strip().splitlines()[-1] == expexted_text
+
 
 
 def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,5 +212,80 @@ def test_main_query_failure()-> None:
 
     mock_query.assert_called_once()
     mock_openai.assert_not_called()
+
+
+
+@pytest.mark.parametrize(
+    "content",
+    [   "这不是json",
+        json.dumps({
+        "total_count": 100,
+        "failure_count": 30,
+        "failure_rate_percent": 60,
+        "conclusion": "这段结论不应输出"
+    },ensure_ascii=False)],
+    ids=["not json","inconsistent_rate"]
+)
+def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | None ) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    response=Mock()
+    response.choices = [Mock()]
+    response.choices[0].message.content = content
+
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert output.strip().splitlines()[-1]=="报告格式或数据不合法"
+    assert "这段结论不应输出" not in output
+    client.chat.completions.create.assert_called_once()
+
+
+def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    response = Mock()
+    response.choices = [Mock()]
+    response.choices[0].message.content = json.dumps({
+        "total_count": 100,
+        "failure_count": 10,
+        "failure_rate_percent": 10,
+        "conclusion": "这份报告的结论不应输出"
+    },ensure_ascii=False)
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert output.strip().splitlines()[-1] == "模型报告与查询结果不一致，请稍后重试。"
+    assert "这份报告的结论不应输出" not in output
+    client.chat.completions.create.assert_called_once()
 
 

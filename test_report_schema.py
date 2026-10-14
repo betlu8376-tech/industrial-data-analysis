@@ -2,7 +2,9 @@ from report_schema import FailureReport
 import pytest
 from pydantic import BaseModel, ValidationError,model_validator
 
-
+from unittest.mock import Mock, patch
+from deepseek_demo import *
+import json
 
 
 def test_report_accepts_valid_json()-> None:
@@ -79,3 +81,6 @@ def test_report_accepts_rounded_rate() -> None:
     }'''
     report=FailureReport.model_validate_json(raw_json)
     assert report.failure_rate_percent==33.33
+
+
+

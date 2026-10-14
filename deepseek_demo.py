@@ -4,6 +4,8 @@ from openai import OpenAI
 import os
 import zai
 from run_sql2 import DATABASE_PATH, PROJECT_ROOT, execute_query
+from report_schema import *
+from  pydantic import ValidationError
 
 
 
@@ -13,8 +15,15 @@ def build_summary_prompt(summary: dict[str, int | float]) -> str:
     prompt = (
         f"总记录数为 {summary['total_count']}，"
         f"故障数为 {summary['failure_count']}，"
-        f"故障率为 {summary['failure_rate_percent']}%。"
-        "请用一句话说明这些统计结果，不要推测故障原因。"
+        f"故障率为 {summary['failure_rate_percent']}%。\n"
+        "请根据以上统计数据生成报告，并遵守以下要求：\n"
+        "1. 只返回一个合法的 JSON 对象，不要 Markdown 代码围栏或额外说明。\n"
+        '2. 仅包含 "total_count"、"failure_count"、"failure_rate_percent"、'
+        '"conclusion" 四个字段。\n'
+        "3. total_count 和 failure_count 使用整数；failure_rate_percent 使用数字，"
+        "不带 %。这三个数值必须与以上统计数据一致，不得自行修改或编造。\n"
+        "4. conclusion 使用字符串，用一句话描述这些统计结果，不要推测故障原因。\n"
+        "5. 字段名和字符串值使用双引号，不要尾随逗号。"
     )
     return prompt
 
@@ -81,7 +90,15 @@ def main():
 
     content=response.choices[0].message.content
     if content and content.strip():
-        print(content)
+        try:
+           report=FailureReport.model_validate_json(content)
+           if report.total_count!=summary["total_count"] or report.failure_count!=summary["failure_count"] or report.failure_rate_percent!=summary["failure_rate_percent"]:
+                print("模型报告与查询结果不一致，请稍后重试。")
+                return
+        except ValidationError:
+            print("报告格式或数据不合法")
+            return
+        print(report.conclusion)
         return
     else:
         print("模型未返回有效正文，请稍后重试。")
