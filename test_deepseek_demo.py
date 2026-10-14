@@ -306,3 +306,47 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
     mock_save.assert_not_called()
 
 
+
+@pytest.mark.parametrize(
+    "save_error",
+    [
+        OSError("test disk write failed"),PermissionError("test write permission denied")
+    ]
+)
+def test_main_handles_save_error(capsys: pytest.CaptureFixture[str],save_error)-> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    response = Mock()
+    response.choices = [Mock()]
+    response.choices[0].message.content = json.dumps({
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+        "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+    },ensure_ascii=False)
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch(
+            "deepseek_demo.save_report",
+            side_effect=save_error,
+        ) as mock_save,
+
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert output.strip().splitlines()[-1]=="报告保存失败，请检查输出路径或写入权限。"
+    assert "总记录数为10000，故障数为339，故障率为3.39%。" not in output
+    mock_save.assert_called_once()
+
+

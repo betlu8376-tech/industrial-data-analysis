@@ -101,7 +101,11 @@ def main():
         except ValidationError:
             print("报告格式或数据不合法")
             return
-        save_report(report, REPORT_PATH)
+        try:
+            save_report(report, REPORT_PATH)
+        except OSError:
+            print("报告保存失败，请检查输出路径或写入权限。 ")
+            return
         print(report.conclusion)
         return
     else:
