@@ -7,8 +7,11 @@ from run_sql2 import DATABASE_PATH, PROJECT_ROOT, execute_query
 from report_schema import *
 from  pydantic import ValidationError
 
+from report_io import save_report
 
 
+
+REPORT_PATH = PROJECT_ROOT / "reports" / "model_failure_report.json"
 
 
 def build_summary_prompt(summary: dict[str, int | float]) -> str:
@@ -98,6 +101,7 @@ def main():
         except ValidationError:
             print("报告格式或数据不合法")
             return
+        save_report(report, REPORT_PATH)
         print(report.conclusion)
         return
     else:

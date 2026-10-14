@@ -16,6 +16,8 @@ from run_sql2 import PROJECT_ROOT,DATABASE_PATH
 from report_schema import FailureReport
 from pydantic import ValidationError
 import json
+from pathlib import Path
+
 
 
 def test_build_summary_prompt() -> None:
@@ -85,7 +87,7 @@ def test_main_handles_timeout(capsys: pytest.CaptureFixture[str]) -> None:
     client.chat.completions.create.assert_called_once()
 
 
-def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
     dataframe = Mock()
     dataframe.to_dict.return_value = [{
         "total_count": 10000,
@@ -93,6 +95,10 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
         "failure_rate_percent": 3.39,
 
     }]
+
+    output_path = tmp_path / "model_failure_report.json"
+
+
 
     response=Mock()
     response.choices = [Mock()]
@@ -114,6 +120,7 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
         patch("deepseek_demo.OpenAI", return_value=client),
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
+        patch("deepseek_demo.REPORT_PATH", output_path),
     ):
         main()
     output = capsys.readouterr().out
@@ -139,6 +146,10 @@ def test_main_success(capsys: pytest.CaptureFixture[str]) -> None:
 
 
     assert output.strip().splitlines()[-1] == expexted_text
+
+    assert output_path.is_file()
+    saved_data = json.loads(output_path.read_text(encoding="utf-8"))
+    assert saved_data == report_data
 
 
 
@@ -246,6 +257,7 @@ def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | 
         patch("deepseek_demo.OpenAI", return_value=client),
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.save_report") as mock_save,
 
     ):
         main()
@@ -254,6 +266,8 @@ def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | 
     assert output.strip().splitlines()[-1]=="报告格式或数据不合法"
     assert "这段结论不应输出" not in output
     client.chat.completions.create.assert_called_once()
+
+    mock_save.assert_not_called()
 
 
 def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
@@ -279,6 +293,7 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
         patch("deepseek_demo.OpenAI", return_value=client),
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.save_report") as mock_save,
 
     ):
         main()
@@ -287,5 +302,7 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
     assert output.strip().splitlines()[-1] == "模型报告与查询结果不一致，请稍后重试。"
     assert "这份报告的结论不应输出" not in output
     client.chat.completions.create.assert_called_once()
+
+    mock_save.assert_not_called()
 
 
