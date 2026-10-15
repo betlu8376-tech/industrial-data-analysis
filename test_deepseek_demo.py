@@ -117,7 +117,7 @@ def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path,token_usa
 
     output_path = tmp_path / "model_failure_report.json"
 
-
+    usage_log_path = tmp_path / "model_usage.jsonl"
 
     response=Mock()
 
@@ -143,6 +143,7 @@ def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path,token_usa
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
         patch("deepseek_demo.REPORT_PATH", output_path),
+        patch("deepseek_demo.USAGE_LOG_PATH", usage_log_path),
     ):
         main()
     output = capsys.readouterr().out
@@ -172,6 +173,23 @@ def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path,token_usa
     assert output_path.is_file()
     saved_data = json.loads(output_path.read_text(encoding="utf-8"))
     assert saved_data == report_data
+
+
+    with usage_log_path.open("r",encoding="utf-8") as file:
+        lines=file.read().splitlines()
+        logs = [json.loads(line) for line in lines]
+        assert len(logs)==1
+        if token_usage:
+            assert logs[0]["model"] == "glm-5.3-flash"
+            assert logs[0]["prompt_tokens"] == token_usage.prompt_tokens
+            assert logs[0]["completion_tokens"] == token_usage.completion_tokens
+            assert logs[0]["total_tokens"] == token_usage.total_tokens
+        else:
+            assert logs[0]["model"] == "glm-5.3-flash"
+            assert logs[0]["prompt_tokens"] is None
+            assert logs[0]["completion_tokens"] is None
+            assert logs[0]["total_tokens"] is None
+
 
     if token_usage:
         assert f"输入token：{token_usage.prompt_tokens}" in output
@@ -233,6 +251,7 @@ def test_main_invalid_content(capsys: pytest.CaptureFixture[str], content: str |
         patch("deepseek_demo.OpenAI", return_value=client),
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
+        patch("deepseek_demo.append_usage_log") as mock_log,
 
     ):
         main()
@@ -240,6 +259,8 @@ def test_main_invalid_content(capsys: pytest.CaptureFixture[str], content: str |
     output = capsys.readouterr().out
     assert "模型未返回有效正文，请稍后重试。" in output
     client.chat.completions.create.assert_called_once()
+
+    mock_log.assert_called_once()
 
 
 def test_main_query_failure()-> None:
@@ -293,6 +314,7 @@ def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | 
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
         patch("deepseek_demo.save_report") as mock_save,
+        patch("deepseek_demo.append_usage_log") as mock_log,
 
     ):
         main()
@@ -303,6 +325,8 @@ def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | 
     client.chat.completions.create.assert_called_once()
 
     mock_save.assert_not_called()
+
+    mock_log.assert_called_once()
 
 
 def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
@@ -332,6 +356,7 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
         patch("deepseek_demo.save_report") as mock_save,
+        patch("deepseek_demo.append_usage_log") as mock_log,
 
     ):
         main()
@@ -342,6 +367,8 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
     client.chat.completions.create.assert_called_once()
 
     mock_save.assert_not_called()
+
+    mock_log.assert_called_once()
 
 
 
@@ -381,6 +408,7 @@ def test_main_handles_save_error(capsys: pytest.CaptureFixture[str],save_error)-
             "deepseek_demo.save_report",
             side_effect=save_error,
         ) as mock_save,
+        patch("deepseek_demo.append_usage_log",) as mock_log,
 
     ):
         main()
@@ -389,5 +417,54 @@ def test_main_handles_save_error(capsys: pytest.CaptureFixture[str],save_error)-
     assert output.strip().splitlines()[-1]=="报告保存失败，请检查输出路径或写入权限。"
     assert "总记录数为10000，故障数为339，故障率为3.39%。" not in output
     mock_save.assert_called_once()
+
+
+
+def test_main_handles_usage_log_error(capsys: pytest.CaptureFixture[str],tmp_path:Path)-> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+
+    }]
+
+    output_path = tmp_path / "model_failure_report.json"
+
+    usage_log_path = tmp_path / "model_usage.jsonl"
+
+    response = Mock()
+
+    response.usage = None
+
+    response.choices = [Mock()]
+    expexted_text = "总记录数为10000，故障数为339，故障率为3.39%。"
+    report_data = {
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+        "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+    }
+    response.choices[0].message.content = json.dumps(
+        report_data, ensure_ascii=False
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
+        patch("deepseek_demo.REPORT_PATH", output_path),
+        patch("deepseek_demo.USAGE_LOG_PATH", usage_log_path),
+        patch("deepseek_demo.append_usage_log",side_effect=OSError("test log write failed") )as mock_log,
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert "用量日志保存失败，继续处理模型报告。" in output
+    assert output_path.is_file()
+    mock_log.assert_called_once()
 
 

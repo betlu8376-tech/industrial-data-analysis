@@ -1,6 +1,6 @@
 import openai
 from fontTools.unicodedata import script
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 import os
 import zai
 from run_sql2 import DATABASE_PATH, PROJECT_ROOT, execute_query
@@ -9,9 +9,14 @@ from  pydantic import ValidationError
 
 from report_io import save_report
 
+from usage_log import append_usage_log
+
 
 
 REPORT_PATH = PROJECT_ROOT / "reports" / "model_failure_report.json"
+
+MODEL_NAME = "glm-5.3-flash"
+USAGE_LOG_PATH = PROJECT_ROOT / "logs" / "model_usage.jsonl"
 
 
 def build_summary_prompt(summary: dict[str, int | float]) -> str:
@@ -90,8 +95,10 @@ def main():
     except openai.APITimeoutError:
         print("模型请求超时，请稍后重试。")
         return
-
-
+    try:
+        append_usage_log(MODEL_NAME, response.usage, USAGE_LOG_PATH)
+    except OSError:
+        print("用量日志保存失败，继续处理模型报告。")
     if response.usage:
         input_tokens=response.usage.prompt_tokens
         output_tokens=response.usage.completion_tokens
