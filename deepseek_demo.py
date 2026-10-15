@@ -91,6 +91,16 @@ def main():
         print("模型请求超时，请稍后重试。")
         return
 
+
+    if response.usage:
+        input_tokens=response.usage.prompt_tokens
+        output_tokens=response.usage.completion_tokens
+        total_tokens=response.usage.total_tokens
+        print(f"token用量信息：\n输入token：{input_tokens}\n输出token：{output_tokens}\n消耗总量：{total_tokens}")
+    else:print("token用量未返回")
+
+
+
     content=response.choices[0].message.content
     if content and content.strip():
         try:

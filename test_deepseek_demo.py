@@ -1,5 +1,7 @@
 from _pytest import monkeypatch
+from fontTools.varLib.models import nonNone
 from matplotlib.font_manager import json_dump
+from openai.types.beta import token_usage
 
 from deepseek_demo import build_summary_prompt
 
@@ -17,6 +19,8 @@ from report_schema import FailureReport
 from pydantic import ValidationError
 import json
 from pathlib import Path
+
+from openai.types.completion_usage import CompletionUsage
 
 
 
@@ -87,7 +91,22 @@ def test_main_handles_timeout(capsys: pytest.CaptureFixture[str]) -> None:
     client.chat.completions.create.assert_called_once()
 
 
-def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
+
+
+@pytest.mark.parametrize(
+    "token_usage",
+    [CompletionUsage(
+    prompt_tokens=120,
+    completion_tokens=80,
+    total_tokens=200,
+),CompletionUsage(
+    prompt_tokens=0,
+    completion_tokens=0,
+    total_tokens=0,
+),None],
+    ids=["normal_usage","zero_usage","missing_usage"]
+)
+def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path,token_usage:CompletionUsage | None) -> None:
     dataframe = Mock()
     dataframe.to_dict.return_value = [{
         "total_count": 10000,
@@ -101,6 +120,9 @@ def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
 
 
     response=Mock()
+
+    response.usage=token_usage
+
     response.choices = [Mock()]
     expexted_text="总记录数为10000，故障数为339，故障率为3.39%。"
     report_data = {
@@ -151,6 +173,13 @@ def test_main_success(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
     saved_data = json.loads(output_path.read_text(encoding="utf-8"))
     assert saved_data == report_data
 
+    if token_usage:
+        assert f"输入token：{token_usage.prompt_tokens}" in output
+        assert f"输出token：{token_usage.completion_tokens}" in output
+        assert f"消耗总量：{token_usage.total_tokens}" in output
+    else:
+        assert "token用量未返回" in output
+
 
 
 def test_main_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,6 +219,9 @@ def test_main_invalid_content(capsys: pytest.CaptureFixture[str], content: str |
     }]
 
     response=Mock()
+
+    response.usage=None
+
     response.choices = [Mock()]
     response.choices[0].message.content = content
 
@@ -246,6 +278,9 @@ def test_main_invalid_report(capsys: pytest.CaptureFixture[str], content: str | 
     }]
 
     response=Mock()
+
+    response.usage=None
+
     response.choices = [Mock()]
     response.choices[0].message.content = content
 
@@ -279,6 +314,9 @@ def test_main_report_mismatch(capsys:pytest.CaptureFixture[str])-> None:
     }]
 
     response = Mock()
+
+    response.usage=None
+
     response.choices = [Mock()]
     response.choices[0].message.content = json.dumps({
         "total_count": 100,
@@ -322,6 +360,9 @@ def test_main_handles_save_error(capsys: pytest.CaptureFixture[str],save_error)-
     }]
 
     response = Mock()
+
+    response.usage=None
+
     response.choices = [Mock()]
     response.choices[0].message.content = json.dumps({
         "total_count": 10000,
