@@ -1,5 +1,5 @@
 import openai
-from fontTools.unicodedata import script
+
 from openai import OpenAI, OpenAIError
 import os
 import zai
@@ -10,6 +10,9 @@ from  pydantic import ValidationError
 from report_io import save_report
 
 from usage_log import append_usage_log
+
+import time
+from openai.types.chat import ChatCompletion
 
 
 
@@ -35,12 +38,40 @@ def build_summary_prompt(summary: dict[str, int | float]) -> str:
     )
     return prompt
 
+
+
+def request_report(client: OpenAI, prompt: str) -> ChatCompletion:
+    for attempt in range(1, 4):
+        try:
+            response = client.chat.completions.create(
+                model="glm-5.3-flash",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                max_tokens=2048,
+                extra_body={"thinking": {"type": "enabled"}},
+            )
+            return response
+        except openai.APITimeoutError:
+                if attempt == 3:
+                    raise
+
+        time.sleep(2 ** (attempt - 1))
+
+
+
+
+
 def main():
     sql_path = PROJECT_ROOT / "sql" / "01_failure_summary.sql"
     dataframe = execute_query(DATABASE_PATH, sql_path)
     summary = dataframe.to_dict(orient="records")[0]
 
-    print(summary)
+
+
 
     # openai.api_key = os.getenv("OPENAI_API_KEY")
     # api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -67,7 +98,7 @@ def main():
 
     print("Client ready")
 
-    prompt=build_summary_prompt(summary)
+
     # response = client.chat.completions.create(
     #     model="deepseek-flash",
     #     messages=[
@@ -80,21 +111,14 @@ def main():
     #     max_tokens=128,
     #     extra_body={"thinking": {"type": "disabled"}},
     # )
+    prompt = build_summary_prompt(summary)
+
     try:
-        response = client.chat.completions.create(
-            model="glm-5.3-flash",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            max_tokens=2048,
-            extra_body={"thinking": {"type": "enabled"}},
-        )
+        response = request_report(client, prompt)
     except openai.APITimeoutError:
         print("模型请求超时，请稍后重试。")
         return
+
     try:
         append_usage_log(MODEL_NAME, response.usage, USAGE_LOG_PATH)
     except OSError:

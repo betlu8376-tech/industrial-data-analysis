@@ -1,11 +1,7 @@
-from _pytest import monkeypatch
-from fontTools.varLib.models import nonNone
-from matplotlib.font_manager import json_dump
-from openai.types.beta import token_usage
 
 from deepseek_demo import build_summary_prompt
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 import openai
 import pytest
@@ -15,12 +11,14 @@ from deepseek_demo import main
 
 from run_sql2 import PROJECT_ROOT,DATABASE_PATH
 
-from report_schema import FailureReport
-from pydantic import ValidationError
 import json
 from pathlib import Path
 
 from openai.types.completion_usage import CompletionUsage
+
+from deepseek_demo import request_report
+
+
 
 
 
@@ -83,12 +81,16 @@ def test_main_handles_timeout(capsys: pytest.CaptureFixture[str]) -> None:
         patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
         patch("deepseek_demo.execute_query", return_value=dataframe),
         patch("deepseek_demo.OpenAI", return_value=client),
+        patch("deepseek_demo.time.sleep") as mock_sleep,
+
     ):
         main()
 
     output = capsys.readouterr().out
     assert "模型请求超时，请稍后重试。" in output
-    client.chat.completions.create.assert_called_once()
+    assert client.chat.completions.create.call_count == 3
+
+    assert mock_sleep.call_args_list == [call(1), call(2)]
 
 
 
@@ -466,5 +468,22 @@ def test_main_handles_usage_log_error(capsys: pytest.CaptureFixture[str],tmp_pat
     assert "用量日志保存失败，继续处理模型报告。" in output
     assert output_path.is_file()
     mock_log.assert_called_once()
+
+
+
+def test_request_report_retries_then_succeeds():
+    client = Mock()
+    response = Mock()
+    client.chat.completions.create.side_effect = [
+        openai.APITimeoutError(request=Mock()),
+        response,
+    ]
+    with patch("deepseek_demo.time.sleep") as mock_sleep:
+        result = request_report(client, "测试提示词")
+
+    assert result is response
+    assert client.chat.completions.create.call_count == 2
+    mock_sleep.assert_called_once_with(1)
+
 
 
