@@ -1,9 +1,10 @@
-import json
 
 from usage_log import append_usage_log
 from pathlib import Path
 from openai.types.completion_usage import CompletionUsage
-from usage_summary import summarize_usage_log
+from usage_summary import summarize_usage_log,estimate_token_cost
+
+import pytest
 
 def test_usage_summary(tmp_path:Path):
     output_path =tmp_path / "nested" / "usage.jsonl"
@@ -38,5 +39,20 @@ def test_empty_usage_summary(tmp_path:Path):
         "known_completion_tokens": 0,
         "known_total_tokens": 0,
 }
+
+
+@pytest.mark.parametrize(
+    "usage_conditions",
+    [[1000,500,2.0,8.0,0.006],[0,0,2.0,8.0,0]],
+    ids=["normal","zero"]
+
+)
+def test_usage_cost(usage_conditions:list[int | float]):
+    total_cost=estimate_token_cost(usage_conditions[0],usage_conditions[1],usage_conditions[2],usage_conditions[3])
+    assert total_cost==pytest.approx(usage_conditions[4])
+
+    with pytest.raises(ValueError):
+        estimate_token_cost(0,0,-2.0,8.0)
+
 
 

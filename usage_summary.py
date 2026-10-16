@@ -26,3 +26,14 @@ def summarize_usage_log(input_path: Path, model: str) -> dict[str, int]:
                     d["known_total_tokens"]+=record["total_tokens"]
 
     return d
+
+
+
+
+def estimate_token_cost(prompt_tokens: int,completion_tokens: int,input_price_per_million: float,output_price_per_million: float,)->float:
+    if prompt_tokens <0 or completion_tokens <0 or input_price_per_million<0 or output_price_per_million<0:
+        raise ValueError("不能出现负数")
+    input_cost = prompt_tokens/1000000 * input_price_per_million
+    output_cost = completion_tokens/1000000 * output_price_per_million
+    return input_cost + output_cost
+
