@@ -118,6 +118,15 @@ def main():
     except openai.APITimeoutError:
         print("模型请求超时，请稍后重试。")
         return
+    except openai.AuthenticationError:
+        print("模型认证失败，请检查 API 密钥。")
+        return
+    except openai.RateLimitError:
+        print("模型请求受限，请检查调用频率或账户额度。")
+        return
+    except openai.APIStatusError as error:
+        print(f"模型请求失败，HTTP 状态码：{error.status_code}。")
+        return
 
     try:
         append_usage_log(MODEL_NAME, response.usage, USAGE_LOG_PATH)

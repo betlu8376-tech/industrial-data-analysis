@@ -18,8 +18,7 @@ from openai.types.completion_usage import CompletionUsage
 
 from deepseek_demo import request_report
 
-
-
+from openai import OpenAI, OpenAIError
 
 
 def test_build_summary_prompt() -> None:
@@ -486,4 +485,62 @@ def test_request_report_retries_then_succeeds():
     mock_sleep.assert_called_once_with(1)
 
 
+@pytest.mark.parametrize(
+    "error_class, status_code, expected_text",
+    [
+        (
+            openai.AuthenticationError,
+            401,
+            "模型认证失败，请检查 API 密钥。",
+        ),
+        (
+            openai.RateLimitError,
+            429,
+            "模型请求受限，请检查调用频率或账户额度。",
+        ),
+        (
+            openai.BadRequestError,
+            400,
+            "模型请求失败，HTTP 状态码：400。",
+        ),
+    ],
+    ids=["authentication", "rate_limit", "bad_request"],
+)
+def test_main_handles_api_status_error(capsys, error_class, status_code, expected_text) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    http_response = Mock(
+        status_code=status_code,
+        request=Mock(),
+        headers={},
+    )
+    error = error_class(
+        "test API failure",
+        response=http_response,
+        body=None,
+    )
+    client=Mock()
+    client.chat.completions.create.side_effect=error
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe)as mock_query,
+        patch("deepseek_demo.save_report") as mock_save,
+        patch("deepseek_demo.time.sleep") as mock_sleep,
+        patch("deepseek_demo.append_usage_log") as mock_log,
+
+    ):
+        main()
+        output = capsys.readouterr().out
+        assert expected_text in output
+
+        client.chat.completions.create.assert_called_once()
+        mock_sleep.assert_not_called()
+        mock_save.assert_not_called()
+        mock_log.assert_not_called()
 
