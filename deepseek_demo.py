@@ -3,6 +3,8 @@ import openai
 from openai import OpenAI, OpenAIError
 import os
 import zai
+
+
 from run_sql2 import DATABASE_PATH, PROJECT_ROOT, execute_query
 from report_schema import *
 from  pydantic import ValidationError
@@ -12,7 +14,10 @@ from report_io import save_report
 from usage_log import append_usage_log
 
 import time
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion,ChatCompletionChunk
+
+from collections.abc import Iterable
+
 
 
 
@@ -69,6 +74,36 @@ def parse_retry_after_seconds(value: str | None) -> int | None:
     if value.isascii() and value.isdigit():
         return int(value)
 
+
+def collect_stream_text(chunks: Iterable[ChatCompletionChunk]) -> str:
+    parts=[]
+    for chunk in chunks:
+        if not chunk.choices:
+            continue
+
+        text=chunk.choices[0].delta.content
+        if text:
+            parts.append(text)
+            print(text, end="", flush=True)
+    return "".join(parts)
+
+
+def request_report_stream(client: OpenAI, prompt: str) -> str:
+    # 流式显示并收集正文，结束或出错时关闭流。
+    stream = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=2048,
+        extra_body={"thinking": {"type": "enabled"}},
+        stream=True,
+    )
+
+    try:
+        return collect_stream_text(stream)
+    finally:
+        stream.close()
 
 
 

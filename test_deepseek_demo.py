@@ -20,6 +20,8 @@ from deepseek_demo import request_report
 
 from openai import OpenAI, OpenAIError
 
+from deepseek_demo import collect_stream_text,request_report_stream
+
 
 def test_build_summary_prompt() -> None:
     summary = {
@@ -621,3 +623,73 @@ def test_main_handles_retry_after(capsys: pytest.CaptureFixture[str],retry_after
         mock_sleep.assert_not_called()
         mock_save.assert_not_called()
         mock_log.assert_not_called()
+
+
+def test_collect_stream_text(capsys: pytest.CaptureFixture[str]) -> None:
+    chunks = [
+        Mock(choices=[]),
+        Mock(choices=[Mock(delta=Mock(content=None))]),
+        Mock(choices=[Mock(delta=Mock(content="总记录数"))]),
+        Mock(choices=[Mock(delta=Mock(content=""))]),
+        Mock(choices=[Mock(delta=Mock(content="为10000，"))]),
+        Mock(choices=[Mock(delta=Mock(content="故障率为3.39%。"))]),
+    ]
+
+    result = collect_stream_text(chunks)
+
+    expected = "总记录数为10000，故障率为3.39%。"
+
+    assert result == expected
+    assert capsys.readouterr().out == expected
+
+
+
+def test_collect_stream_text_empty(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    chunks = [
+        Mock(choices=[]),
+
+        Mock(choices=[Mock(delta=Mock(content=""))]),
+    ]
+    result = collect_stream_text(chunks)
+    expected = ""
+    assert result == expected
+    assert capsys.readouterr().out == expected
+
+
+def test_request_report_stream_success() -> None:
+    client = Mock()
+    stream = Mock()
+    client.chat.completions.create.return_value = stream
+
+    with patch(
+        "deepseek_demo.collect_stream_text",
+        return_value="测试正文",
+    ) as mock_collect:
+        result = request_report_stream(client, "测试提示词")
+
+    assert result == "测试正文"
+    mock_collect.assert_called_once_with(stream)
+    stream.close.assert_called_once()
+
+    client.chat.completions.create.assert_called_once()
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["stream"] is True
+    assert kwargs["messages"] == [
+        {"role": "user", "content": "测试提示词"},
+    ]
+
+
+def test_request_report_stream_closes_on_error()-> None:
+    client = Mock()
+    stream = Mock()
+    client.chat.completions.create.return_value = stream
+
+    with patch("deepseek_demo.collect_stream_text",side_effect=RuntimeError("读取流失败")) as mock_collect:
+        with pytest.raises(RuntimeError,match="读取流失败"):
+            request_report_stream(client, "测试提示词")
+
+    mock_collect.assert_called_once_with(stream)
+    stream.close.assert_called_once()
+    client.chat.completions.create.assert_called_once()
