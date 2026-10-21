@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch, call
 import openai
 import pytest
 
-from deepseek_demo import main
+from deepseek_demo import main,parse_retry_after_seconds
 
 
 from run_sql2 import PROJECT_ROOT,DATABASE_PATH
@@ -544,3 +544,80 @@ def test_main_handles_api_status_error(capsys, error_class, status_code, expecte
         mock_save.assert_not_called()
         mock_log.assert_not_called()
 
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("5", 5),
+        (" 5 ", 5),
+        ("0", 0),
+        (None, None),
+        ("", None),
+        ("-1", None),
+        ("1.5", None),
+        ("abc", None),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", None),
+    ],
+)
+def test_parse_retry_after_seconds(
+    value: str | None,
+    expected: int | None,
+) -> None:
+    result = parse_retry_after_seconds(value)
+    assert result == expected
+
+
+
+@pytest.mark.parametrize(
+    "retry_after, expected_text",
+    [
+        ("5", "服务端建议至少等待 5 秒后再尝试"),
+        ("0", "服务端建议至少等待 0 秒后再尝试"),
+        (None, "模型请求受限，请检查调用频率或账户额度。"),
+        ("abc", "模型请求受限，请检查调用频率或账户额度。"),
+    ],
+    ids=["seconds", "zero", "missing", "invalid"],
+)
+def test_main_handles_retry_after(capsys: pytest.CaptureFixture[str],retry_after: str | None,expected_text: str) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+    }]
+
+    headers = {}
+    if retry_after is not None:
+        headers["retry-after"] = retry_after
+
+    http_response = Mock(
+        status_code=429,
+        request=Mock(),
+        headers=headers,
+    )
+
+    error = openai.RateLimitError(
+        "test rate limit",
+        response=http_response,
+        body=None,
+    )
+    client=Mock()
+    client.chat.completions.create.side_effect=error
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe)as mock_query,
+        patch("deepseek_demo.save_report") as mock_save,
+        patch("deepseek_demo.time.sleep") as mock_sleep,
+        patch("deepseek_demo.append_usage_log") as mock_log,
+
+    ):
+        main()
+        output = capsys.readouterr().out
+        assert expected_text in output
+
+        client.chat.completions.create.assert_called_once()
+        mock_sleep.assert_not_called()
+        mock_save.assert_not_called()
+        mock_log.assert_not_called()

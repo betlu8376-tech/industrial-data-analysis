@@ -62,6 +62,13 @@ def request_report(client: OpenAI, prompt: str) -> ChatCompletion:
         time.sleep(2 ** (attempt - 1))
 
 
+def parse_retry_after_seconds(value: str | None) -> int | None:
+    if value is None:
+        return None
+    value=value.strip()
+    if value.isascii() and value.isdigit():
+        return int(value)
+
 
 
 
@@ -121,8 +128,15 @@ def main():
     except openai.AuthenticationError:
         print("模型认证失败，请检查 API 密钥。")
         return
-    except openai.RateLimitError:
-        print("模型请求受限，请检查调用频率或账户额度。")
+    except openai.RateLimitError as error:
+        retry_after = error.response.headers.get("retry-after")
+        wait_seconds = parse_retry_after_seconds(retry_after)
+
+        if wait_seconds is not None:
+            print(f"模型请求受限，服务端建议至少等待 {wait_seconds} 秒后再尝试。")
+        else:
+            print("模型请求受限，请检查调用频率或账户额度。")
+
         return
     except openai.APIStatusError as error:
         print(f"模型请求失败，HTTP 状态码：{error.status_code}。")
