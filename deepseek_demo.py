@@ -1,5 +1,5 @@
 import openai
-
+import argparse
 from openai import OpenAI, OpenAIError
 import os
 import zai
@@ -17,6 +17,7 @@ import time
 from openai.types.chat import ChatCompletion,ChatCompletionChunk
 
 from collections.abc import Iterable
+from pathlib import Path
 
 
 
@@ -77,15 +78,22 @@ def parse_retry_after_seconds(value: str | None) -> int | None:
 
 def collect_stream_text(chunks: Iterable[ChatCompletionChunk]) -> str:
     parts=[]
+    stop_reason = None
     for chunk in chunks:
         if not chunk.choices:
             continue
-
+        current_reason = chunk.choices[0].finish_reason
+        if current_reason is not None:
+            stop_reason = current_reason
         text=chunk.choices[0].delta.content
         if text:
             parts.append(text)
             print(text, end="", flush=True)
-    return "".join(parts)
+    if stop_reason == "stop":
+        return "".join(parts)
+    else:
+        raise ValueError(f"结束原因：{stop_reason}")
+
 
 
 def request_report_stream(client: OpenAI, prompt: str) -> str:
@@ -105,9 +113,28 @@ def request_report_stream(client: OpenAI, prompt: str) -> str:
     finally:
         stream.close()
 
+def process_report(content: str | None,summary:dict[str, int | float],output_path:Path) -> None:
+    if content and content.strip():
+        try:
+           report=FailureReport.model_validate_json(content)
+           if report.total_count!=summary["total_count"] or report.failure_count!=summary["failure_count"] or report.failure_rate_percent!=summary["failure_rate_percent"]:
+                print("模型报告与查询结果不一致，请稍后重试。")
+                return
+        except ValidationError:
+            print("报告格式或数据不合法")
+            return
+        try:
+            save_report(report, output_path)
+        except OSError:
+            print("报告保存失败，请检查输出路径或写入权限。 ")
+            return
+        print(report.conclusion)
+        return
+    else:
+        print("模型未返回有效正文，请稍后重试。")
+        return
 
-
-def main():
+def main(use_stream: bool = False):
     sql_path = PROJECT_ROOT / "sql" / "01_failure_summary.sql"
     dataframe = execute_query(DATABASE_PATH, sql_path)
     summary = dataframe.to_dict(orient="records")[0]
@@ -156,7 +183,19 @@ def main():
     prompt = build_summary_prompt(summary)
 
     try:
-        response = request_report(client, prompt)
+        if use_stream:
+            try:
+                content = request_report_stream(client, prompt)
+                usage=None
+                print()
+
+            except ValueError as e:
+                print(f"流式回答未完整生成：{e}")
+                return
+        else:
+            response = request_report(client, prompt)
+            usage=response.usage
+            content=response.choices[0].message.content
     except openai.APITimeoutError:
         print("模型请求超时，请稍后重试。")
         return
@@ -178,42 +217,35 @@ def main():
         return
 
     try:
-        append_usage_log(MODEL_NAME, response.usage, USAGE_LOG_PATH)
+        append_usage_log(MODEL_NAME, usage, USAGE_LOG_PATH)
     except OSError:
         print("用量日志保存失败，继续处理模型报告。")
-    if response.usage:
-        input_tokens=response.usage.prompt_tokens
-        output_tokens=response.usage.completion_tokens
-        total_tokens=response.usage.total_tokens
+    if usage:
+        input_tokens=usage.prompt_tokens
+        output_tokens=usage.completion_tokens
+        total_tokens=usage.total_tokens
         print(f"token用量信息：\n输入token：{input_tokens}\n输出token：{output_tokens}\n消耗总量：{total_tokens}")
-    else:print("token用量未返回")
-
-
-
-    content=response.choices[0].message.content
-    if content and content.strip():
-        try:
-           report=FailureReport.model_validate_json(content)
-           if report.total_count!=summary["total_count"] or report.failure_count!=summary["failure_count"] or report.failure_rate_percent!=summary["failure_rate_percent"]:
-                print("模型报告与查询结果不一致，请稍后重试。")
-                return
-        except ValidationError:
-            print("报告格式或数据不合法")
-            return
-        try:
-            save_report(report, REPORT_PATH)
-        except OSError:
-            print("报告保存失败，请检查输出路径或写入权限。 ")
-            return
-        print(report.conclusion)
-        return
     else:
-        print("模型未返回有效正文，请稍后重试。")
-        return
+        if use_stream:
+            print("流式 token 用量暂未采集")
+        else:
+            print("token用量未返回")
+
+
+
+
+    process_report(content,summary,REPORT_PATH)
 
 
 
 # print(response.usage)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="解析命令行，控制是否流式输出")
+    parser.add_argument(
+        "--use_stream",
+        action="store_true",
+        help="使用流式模式生成报告"
+    )
+    args = parser.parse_args()
+    main(args.use_stream)

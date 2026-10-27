@@ -628,11 +628,12 @@ def test_main_handles_retry_after(capsys: pytest.CaptureFixture[str],retry_after
 def test_collect_stream_text(capsys: pytest.CaptureFixture[str]) -> None:
     chunks = [
         Mock(choices=[]),
-        Mock(choices=[Mock(delta=Mock(content=None))]),
-        Mock(choices=[Mock(delta=Mock(content="总记录数"))]),
-        Mock(choices=[Mock(delta=Mock(content=""))]),
-        Mock(choices=[Mock(delta=Mock(content="为10000，"))]),
-        Mock(choices=[Mock(delta=Mock(content="故障率为3.39%。"))]),
+        Mock(choices=[Mock(delta=Mock(content=None),finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content="总记录数"), finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content=""),finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content="为10000，"), finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content="故障率为3.39%。"),finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content=None),finish_reason="stop")]),
     ]
 
     result = collect_stream_text(chunks)
@@ -648,14 +649,11 @@ def test_collect_stream_text_empty(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     chunks = [
-        Mock(choices=[]),
 
-        Mock(choices=[Mock(delta=Mock(content=""))]),
     ]
-    result = collect_stream_text(chunks)
-    expected = ""
-    assert result == expected
-    assert capsys.readouterr().out == expected
+    with pytest.raises(ValueError):
+         collect_stream_text(chunks)
+    assert capsys.readouterr().out == ""
 
 
 def test_request_report_stream_success() -> None:
@@ -693,3 +691,136 @@ def test_request_report_stream_closes_on_error()-> None:
     mock_collect.assert_called_once_with(stream)
     stream.close.assert_called_once()
     client.chat.completions.create.assert_called_once()
+
+
+
+@pytest.mark.parametrize(
+    "finish_reason",
+    ["length",None,"tool_calls"],
+)
+def test_collect_stream_text_rejects_unfinished(finish_reason: str | None) -> None:
+    chunks = [
+        Mock(choices=[Mock(delta=Mock(content="总记录数为10000，故障率为3.39%。"), finish_reason=None)]),
+        Mock(choices=[Mock(delta=Mock(content=None),finish_reason=finish_reason)])
+    ]
+    with pytest.raises(ValueError):
+        collect_stream_text(chunks)
+
+
+
+def test_main_stream_success(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+
+    }]
+
+    output_path = tmp_path / "model_failure_report.json"
+
+    usage_log_path = tmp_path / "model_usage.jsonl"
+
+    response = Mock()
+
+
+
+    response.choices = [Mock()]
+    expexted_text = "总记录数为10000，故障数为339，故障率为3.39%。"
+    report_data = {
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+        "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+    }
+    response.choices[0].message.content = json.dumps(
+        report_data, ensure_ascii=False
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
+        patch("deepseek_demo.REPORT_PATH", output_path),
+        patch("deepseek_demo.USAGE_LOG_PATH", usage_log_path),
+        patch("deepseek_demo.request_report_stream",return_value=json.dumps(report_data, ensure_ascii=False))as mock_stream_request,
+        patch("deepseek_demo.request_report")as mock_report,
+    ):
+        main(use_stream=True)
+
+        mock_stream_request.assert_called_once()
+        assert output_path.is_file()
+        saved_data = json.loads(output_path.read_text("utf8"))
+        assert saved_data==report_data
+
+        with open(usage_log_path, "r", encoding="utf8") as usage_log:
+            lines = usage_log.readlines()
+            for line in lines:
+                record = json.loads(line)
+            assert len(lines)==1
+            assert record["prompt_tokens"] is None
+            assert record["completion_tokens"] is None
+            assert record["total_tokens"] is None
+
+        output = capsys.readouterr().out
+        assert "流式 token 用量暂未采集" in output
+
+
+
+def test_main_stream_incomplete(capsys: pytest.CaptureFixture[str],tmp_path:Path) -> None:
+    dataframe = Mock()
+    dataframe.to_dict.return_value = [{
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+
+    }]
+
+    output_path = tmp_path / "model_failure_report.json"
+
+    usage_log_path = tmp_path / "model_usage.jsonl"
+
+    response = Mock()
+
+    response.choices = [Mock()]
+    expexted_text = "总记录数为10000，故障数为339，故障率为3.39%。"
+    report_data = {
+        "total_count": 10000,
+        "failure_count": 339,
+        "failure_rate_percent": 3.39,
+        "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+    }
+    response.choices[0].message.content = json.dumps(
+        report_data, ensure_ascii=False
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+
+    with (
+        patch("deepseek_demo.OpenAI", return_value=client),
+        patch.dict("os.environ", {"ZHIPU_API_KEY": "test-placeholder"}),
+        patch("deepseek_demo.execute_query", return_value=dataframe) as mock_query,
+        patch("deepseek_demo.REPORT_PATH", output_path),
+        patch("deepseek_demo.USAGE_LOG_PATH", usage_log_path),
+        patch("deepseek_demo.request_report_stream",
+              side_effect=ValueError("结束原因：length")) as mock_stream_request,
+        patch("deepseek_demo.request_report") as mock_report,
+        patch("deepseek_demo.process_report")as mock_process_report,
+        patch("deepseek_demo.append_usage_log")as mock_append_log,
+    ):
+        main(use_stream=True)
+
+
+        output = capsys.readouterr().out
+        mock_stream_request.assert_called_once()
+        mock_report.assert_not_called()
+        mock_process_report.assert_not_called()
+        mock_append_log.assert_not_called()
+
+        assert "流式回答未完整生成" in output
+        assert "length" in output
+
