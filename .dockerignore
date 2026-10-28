@@ -1,0 +1,18 @@
+#Git 和编辑器文件：
+.git
+.idea
+
+#虚拟环境与缓存：
+.venv
+venv
+**/__pycache__
+.pytest_cache
+
+#本地配置：
+.env
+.env.*
+
+#数据和运行结果：
+data
+logs
+reports

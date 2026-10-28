@@ -1,6 +1,6 @@
 # Industrial Data Analysis
 
-基于 AI4I 2020 预测性维护数据集，使用 Python、Pandas、SQLite 和 Matplotlib 分析工业设备的运行状态与故障特征，并通过 FastAPI 提供统计查询和故障率计算接口。
+基于 AI4I 2020 预测性维护数据集，使用 Python、Pandas、SQLite 和 Matplotlib 分析工业设备的运行状态与故障特征，并通过 FastAPI 提供统计查询和故障率计算接口。支持调用智谱模型生成 JSON 故障报告，提供普通与流式两种模式，并在保存前校验报告数据。
 
 ## 项目目标
 
@@ -11,6 +11,8 @@
 - 使用 Git 和 GitHub 管理项目版本
 - 使用 FastAPI 提供 JSON 接口，通过 Pydantic 校验输入与输出
 - 使用 pytest 自动测试 SQL 查询和接口行为
+- 根据 SQL 统计生成模型报告，校验格式、数值规则及与查询结果的一致性
+- 支持流式正文显示、结束状态检查，以及 token 用量日志记录
 
 ## 数据集
 
@@ -35,6 +37,7 @@
 - FastAPI、Uvicorn
 - Pydantic
 - pytest、HTTPX（接口测试）
+- OpenAI Python SDK（连接智谱兼容接口）
 - Git
 - GitHub
 
@@ -135,8 +138,15 @@ industrial-data-analysis/
 ├── run_sql.py                       # 执行 SQL 并导出结果
 ├── run_sql2.py                      # 支持命令行参数的 SQL 执行工具
 ├── api.py                           # FastAPI 查询与计算接口
+├── deepseek_demo.py                 # 普通/流式模型报告与命令行入口
+├── report_schema.py                 # 报告字段与数值规则
+├── report_io.py                     # 保存通过校验的 JSON 报告
+├── usage_log.py                     # 追加 JSONL 用量记录
+├── usage_summary.py                 # 按模型汇总已知用量、按给定单价估算费用
+├── logs/                            # 运行时用量日志
 ├── test_run_sql2.py                 # SQL 工具测试
 ├── test_api.py                      # 接口测试
+├── test_deepseek_demo.py             # 模型报告、异常处理与流式测试
 ├── plot_failure_rate.py             # 基础故障率图表
 ├── 04_plot_condition_comparison.py  # 运行条件对比图
 ├── 05_plot_failure_by_tool_wear.py  # 刀具磨损分析图
@@ -334,6 +344,120 @@ python -m pytest test_run_sql2.py test_api.py -v
 ```
 
 预期结果为 `10 passed`。若同时出现依赖库的弃用警告，应结合测试结果区分警告与失败；警告本身不等于测试失败。
+
+## 模型故障报告
+
+程序读取 `sql/01_failure_summary.sql` 的统计结果，向智谱模型请求 JSON 报告。普通模式与流式模式共用报告校验和保存逻辑。
+
+当前代码使用模型 `glm-5.3-flash`，通过 OpenAI Python SDK 连接 `https://open.bigmodel.cn/api/paas/v4`。提示词要求模型依据统计数据生成结论，不推测故障原因；提示词约束本身不保证报告合法，程序还会校验返回结果。
+
+### 1. 准备环境和密钥
+
+在项目根目录、已选定的 Python 环境中安装模型报告相关依赖：
+
+```powershell
+python -m pip install openai zai-sdk pandas "pydantic>=2" pytest
+```
+
+当前脚本保留了 `import zai`，因此需要安装 `zai-sdk`；实际请求通过 OpenAI Python SDK 发出。全量测试还需要前文列出的 API 与测试依赖。
+
+先按前面的步骤创建 SQLite 数据库。默认数据库为 `data/processed/industrial_data.db`，也可通过 `DATABASE_PATH` 环境变量指定包含对应表结构的数据库。
+
+在当前 PowerShell 会话设置密钥，运行时将占位符替换为自己的智谱 API 密钥：
+
+```powershell
+$env:ZHIPU_API_KEY = "YOUR_ZHIPU_API_KEY"
+```
+
+环境变量只对当前终端及其启动的程序生效。不要把真实密钥写入源码、README 或提交到 Git。
+
+### 2. 选择运行模式
+
+查看帮助，不执行数据库查询或模型请求：
+
+```powershell
+python deepseek_demo.py --help
+```
+
+普通模式，等待响应后处理报告：
+
+```powershell
+python deepseek_demo.py
+```
+
+流式模式，逐段显示模型正文，接收结束后处理报告：
+
+```powershell
+python deepseek_demo.py --use_stream
+```
+
+`--use_stream` 是布尔开关，提供时为 `True`，不提供时为 `False`，不需要在开关后再填写值。两种报告生成命令都会访问模型服务，并按账户规则消耗额度。
+
+流式模式显示的是尚未校验的 JSON 正文片段，不能仅凭终端已经出现文字就认定报告有效。程序仅接受 `finish_reason="stop"` 的流式结果，再进行报告校验；达到 token 上限、缺失结束标记或其他结束原因时，提示回答未完整生成并退出，不进入报告保存。
+
+### 3. 报告校验和输出
+
+程序检查以下内容：
+
+- 正文非空，并能解析为符合 `FailureReport` 的 JSON。
+- 总数大于零，故障数非负且不超过总数。
+- 故障率等于 `round(故障数 / 总数 * 100, 2)`。
+- 总数、故障数、故障率与 SQL 查询结果一致。
+
+校验通过后，以 UTF-8 保存带缩进的 JSON，并打印报告结论。当前数据集的一份示例报告为：
+
+```json
+{
+  "total_count": 10000,
+  "failure_count": 339,
+  "failure_rate_percent": 3.39,
+  "conclusion": "总记录数为10000，故障数为339，故障率为3.39%。"
+}
+```
+
+结论文字由模型生成，实际措辞可能不同。结构和数值校验不等于对结论语义的自动核验。
+
+默认输出位置相对于项目根目录：
+
+| 文件 | 写入方式 |
+|---|---|
+| `reports/model_failure_report.json` | 每次保存到同一路径，会覆盖已有报告 |
+| `logs/model_usage.jsonl` | 追加写入，每行一条 JSON 用量记录 |
+
+程序按需创建输出目录。用量日志保存失败会提示并继续处理报告；报告保存失败会提示并退出。
+
+### 4. 用量记录与当前限制
+
+日志包含 `model`、`prompt_tokens`、`completion_tokens` 和 `total_tokens` 四个字段。
+
+- 普通模式：记录响应提供的用量；响应缺失用量时，三个 token 字段写为 `null`。
+- 流式模式：当前实现只收集正文，尚未采集流式用量，三个 token 字段写为 `null`，终端提示“流式 token 用量暂未采集”。
+
+`null` 表示未知，不等于零消耗。收到正文后的用量记录可能早于报告校验，因此有日志记录不代表报告已经保存成功；请求失败或流式结束状态不符合要求时，不会追加这次结果的用量记录。
+
+`usage_summary.py` 可按模型汇总日志中的已知用量。费用估算函数使用调用者给定的单价，尚未接入报告命令，也不代表服务商实际账单或当前模型报价。
+
+### 5. 超时与请求错误
+
+客户端配置 `timeout=30.0`，关闭 SDK 自动重试。普通模式对超时最多尝试 3 次，前两次超时后分别等待 1 秒、2 秒；流式模式不自动重新请求，避免重复输出已显示的正文。
+
+认证失败会提示检查密钥；限流会提示检查调用频率或账户额度。有整数秒数形式的 `Retry-After` 响应头时，显示服务端建议等待时间，不自动等待或重试。其他 HTTP 状态错误显示状态码。
+
+### 6. 自动测试
+
+模型相关测试使用 Mock 替换外部模型请求，不需要真实 API 密钥，也不会消耗模型额度：
+
+```powershell
+python -B -m pytest test_deepseek_demo.py -v -p no:cacheprovider
+```
+
+在项目根目录运行全部测试：
+
+```powershell
+python -B -m pytest . -q -p no:cacheprovider
+```
+
+测试覆盖报告校验与保存、用量日志、超时重试、HTTP 错误、流式片段收集、结束状态、关闭流，以及流式入口成功和失败时的行为。Mock 测试验证的是程序逻辑，不能替代真实服务兼容性的端到端验证。
 
 ## 分析结论
 

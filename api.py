@@ -1,4 +1,3 @@
-from PIL.ImtImagePlugin import field
 
 from run_sql2 import DATABASE_PATH,PROJECT_ROOT,execute_query
 
@@ -53,3 +52,24 @@ def calculate_failure_rate(data: FailureRateRequest) -> FailureRateResponse:
 
     rate=round(100.0*data.failure_count/data.total_count,2)
     return FailureRateResponse(failure_rate_percent=rate)
+
+
+class ProductTypeSummaryResponse(BaseModel):
+    product_type:str
+    total_count: int=Field(gt=0)
+    failure_count: int=Field(ge=0)
+    failure_rate_percent: float
+
+
+def load_product_type_summary() -> list[dict[str, str | int | float]]:
+    sql_path = PROJECT_ROOT / "sql" / "02_failure_by_product_type.sql"
+    dataframe = execute_query(DATABASE_PATH, sql_path)
+    rn={"total_nums":"total_count","failure_counts":"failure_count"}
+    dataframe = dataframe.rename(columns=rn)
+    return dataframe.to_dict(orient="records")
+
+@app.get("/failure-by-product-type",response_model=list[ProductTypeSummaryResponse])
+def get_failure_by_product_type() -> list[dict[str, str | int | float]]:
+    result = load_product_type_summary()
+    return result
+
