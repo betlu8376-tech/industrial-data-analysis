@@ -73,3 +73,39 @@ def get_failure_by_product_type() -> list[dict[str, str | int | float]]:
     result = load_product_type_summary()
     return result
 
+class ProductWearSummaryResponse(BaseModel):
+    tool_wear_group:str
+    total_count: int=Field(gt=0)
+    failure_count: int=Field(ge=0)
+    failure_rate_percent: float
+
+def load_product_wear_summary() -> list[dict[str, str | int | float]]:
+    sql_path=PROJECT_ROOT / "sql" / "05_failure_by_tool_wear.sql"
+    dataframe = execute_query(DATABASE_PATH, sql_path)
+    rn={"total_nums":"total_count","failure_counts":"failure_count"}
+    dataframe = dataframe.rename(columns=rn)
+    return dataframe.to_dict(orient="records")
+
+@app.get("/failure-by-tool-wear",response_model=list[ProductWearSummaryResponse])
+def get_failure_by_tool_wear() -> list[dict[str, str | int | float]]:
+    result = load_product_wear_summary()
+    return result
+
+
+class ProductTorqueSummaryResponse(BaseModel):
+    torque_nm_group:str
+    total_count: int=Field(gt=0)
+    failure_count: int=Field(ge=0)
+    failure_rate_percent: float
+
+def load_product_torque_summary() -> list[dict[str, str | int | float]]:
+    sql_path=PROJECT_ROOT / "sql" / "06_failure_by_torque.sql"
+    dataframe = execute_query(DATABASE_PATH, sql_path)
+    rn={"total_nums":"total_count","failure_counts":"failure_count"}
+    dataframe = dataframe.rename(columns=rn)
+    return dataframe.to_dict(orient="records")
+
+@app.get("/failure-by-torque",response_model=list[ProductTorqueSummaryResponse ])
+def get_failure_by_torque() -> list[dict[str, str | int | float]]:
+    result = load_product_torque_summary()
+    return result

@@ -97,3 +97,70 @@ def test_failure_by_product_type_empty()->None:
             response=client.get("/failure-by-product-type")
             assert response.status_code == 200  
             assert response.json() == []
+
+
+
+def test_failure_by_tool_wear_success() -> None:
+    dataframe=pd.DataFrame([
+        {"tool_wear_group":"0-49","total_nums": 100, "failure_counts": 10,"failure_rate_percent": 10.0},
+        {"tool_wear_group":"50-99","total_nums": 200, "failure_counts": 4, "failure_rate_percent": 2.0},
+        {"tool_wear_group":"100-149","total_nums": 50, "failure_counts": 0,"failure_rate_percent": 0.0}
+    ])
+
+    with(
+        patch("api.execute_query", return_value=dataframe)as mock_query,
+    ):
+        response=client.get("/failure-by-tool-wear")
+        assert response.status_code == 200
+        expected_dataframe=[
+            {"tool_wear_group":"0-49","total_count": 100,"failure_count": 10,"failure_rate_percent": 10.0},
+            {"tool_wear_group": "50-99", "total_count": 200, "failure_count": 4, "failure_rate_percent": 2.0},
+            {"tool_wear_group": "100-149", "total_count": 50, "failure_count": 0, "failure_rate_percent": 0.0},
+        ]
+        assert response.json() == expected_dataframe
+
+
+def test_failure_by_tool_wear_empty() -> None:
+    dataframe=pd.DataFrame(
+        columns=["tool_wear_group", "total_nums", "failure_counts", "failure_rate_percent"]
+    )
+    with(
+        patch("api.execute_query", return_value=dataframe)as mock_query,
+    ):
+        response=client.get("/failure-by-tool-wear")
+        assert response.status_code == 200
+        expected_dataframe=[]
+        assert response.json() == expected_dataframe
+
+
+def test_failure_by_torque_success() -> None:
+    dataframe = pd.DataFrame([
+        {"torque_nm_group": "0-49", "total_nums": 100, "failure_counts": 10, "failure_rate_percent": 10.0},
+        {"torque_nm_group": "50-99", "total_nums": 200, "failure_counts": 4, "failure_rate_percent": 2.0},
+        {"torque_nm_group": "100-149", "total_nums": 50, "failure_counts": 0, "failure_rate_percent": 0.0}
+    ])
+
+    with(
+        patch("api.execute_query", return_value=dataframe) as mock_query,
+    ):
+        response = client.get("/failure-by-torque")
+        assert response.status_code == 200
+        expected_dataframe = [
+            {"torque_nm_group": "0-49", "total_count": 100, "failure_count": 10, "failure_rate_percent": 10.0},
+            {"torque_nm_group": "50-99", "total_count": 200, "failure_count": 4, "failure_rate_percent": 2.0},
+            {"torque_nm_group": "100-149", "total_count": 50, "failure_count": 0, "failure_rate_percent": 0.0},
+        ]
+        assert response.json() == expected_dataframe
+
+
+def test_failure_by_torque_empty() -> None:
+    dataframe = pd.DataFrame(
+        columns=["torque_nm_group", "total_nums", "failure_counts", "failure_rate_percent"]
+    )
+    with(
+        patch("api.execute_query", return_value=dataframe) as mock_query,
+    ):
+        response = client.get("/failure-by-tool-wear")
+        assert response.status_code == 200
+        expected_dataframe = []
+        assert response.json() == expected_dataframe
