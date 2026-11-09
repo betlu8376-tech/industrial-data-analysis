@@ -1,6 +1,6 @@
 import os
 import argparse
-from api import load_product_type_summary
+from api import load_product_type_summary,load_product_torque_summary,load_product_wear_summary
 from openai import OpenAI
 import json
 
@@ -17,6 +17,30 @@ tools=[
                 "required":[],
             }
         }
+    },
+    {
+        "type":"function",
+        "function":{
+            "name":"load_product_wear_summary",
+            "description":"各刀具磨损时间区间的故障统计",
+            "parameters":{
+                "type":"object",
+                "properties":{},
+                "required":[],
+            }
+        }
+    },
+{
+        "type":"function",
+        "function":{
+            "name":"load_product_torque_summary",
+            "description":"各扭矩区间的故障统计",
+            "parameters":{
+                "type":"object",
+                "properties":{},
+                "required":[],
+            }
+        }
     }
 ]
 
@@ -24,6 +48,10 @@ tools=[
 def execute_tool(tool_name: str) -> list[dict[str, str | int | float]]:
     if tool_name == "load_product_type_summary" :
         return load_product_type_summary()
+    elif tool_name == "load_product_wear_summary":
+        return load_product_wear_summary()
+    elif tool_name == "load_product_torque_summary":
+        return load_product_torque_summary()
     raise ValueError(f"未知工具：{tool_name}")
 
 

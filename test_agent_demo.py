@@ -132,3 +132,33 @@ def test_answer_question_rejects_arguments()->None:
             answer_question(client,"哪种产品故障率最高")
         mock_execute_tool.assert_not_called()
         client.chat.completions.create.assert_not_called()
+
+
+
+
+@pytest.mark.parametrize("tool_name,expected_key",
+                         [
+                             ("load_product_type_summary", "product"),
+                             ("load_product_wear_summary", "wear"),
+                             ("load_product_torque_summary", "torque"),
+                         ])
+def test_execute_tool_success(tool_name:str,expected_key:str)->None:
+    with(
+        patch("agent_demo.load_product_type_summary") as mock_type,
+        patch("agent_demo.load_product_wear_summary") as mock_wear,
+        patch("agent_demo.load_product_torque_summary") as mock_torque,
+
+    ):
+        loaders = {
+            "product": mock_type,
+            "wear": mock_wear,
+            "torque": mock_torque,
+        }
+        expected_loader = loaders[expected_key]
+        result = execute_tool(tool_name)
+        expected_loader.assert_called_once_with()
+        assert result is expected_loader.return_value
+
+        for key,loader in loaders.items():
+            if key != expected_key:
+                loaders[key].assert_not_called()
