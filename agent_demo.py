@@ -4,6 +4,9 @@ from api import load_product_type_summary,load_product_torque_summary,load_produ
 from openai import OpenAI
 import json
 
+import sqlite3
+import pandas as pd
+
 MODEL_NAME = "deepseek-flash"
 tools=[
     {
@@ -162,8 +165,13 @@ def main(question: str):
     with OpenAI(api_key=api_key,
         base_url="https://api.deepseek.com",
         timeout=30.0,
-        max_retries=0,) as client:
-        answer = answer_question(client, question)
+        max_retries=0,
+        ) as client:
+        try:
+            answer = answer_question(client, question)
+        except(OSError, sqlite3.Error, pd.errors.DatabaseError):
+            print("数据库查询失败，请检查数据库和 SQL 文件")
+            return
         print(answer)
 
 

@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 
 from jsonschema.validators import create
 
-from agent_demo import request_tool_call,tools,answer_question,execute_tool
-
+from agent_demo import request_tool_call,tools,answer_question,execute_tool,main
+import pandas as pd
 
 import pytest
 
@@ -254,3 +254,51 @@ def test_answer_question_with_product_type()->None:
         sent_messages = kwargs["messages"]
         assert json.loads(sent_messages[2]["content"]) == [records[0]]
         client.chat.completions.create.assert_called_once()
+
+
+def test_answer_question_stops_on_query_failure()->None:
+    client = Mock()
+
+    response = Mock()
+    response.choices = [Mock()]
+    response.choices[0].message.content = "L 类型的故障率最高，为 3.92%。"
+    client.chat.completions.create.return_value = response
+
+    tool_call = Mock(id="call_001")
+    tool_call.function = Mock()
+    tool_call.function.name = "load_product_type_summary"
+    tool_call.function.arguments = "{}"
+    message = Mock(tool_calls=[tool_call], content="你好，我可以帮助分析设备故障数据。")
+    call_data = {
+        "id": "call_001",
+        "type": "function",
+        "function": {
+            "name": "load_product_type_summary",
+            "arguments": "{}",
+        }
+    }
+    message.model_dump.return_value = {"role": "assistant", "tool_calls": [call_data]}
+    loaded_data = [{"product_type": "L", "total_count": 6000, "failure_count": 235, "failure_rate_percent": 3.92}]
+
+    with(
+        patch("agent_demo.load_product_type_summary", side_effect=pd.errors.DatabaseError("test query failure")) as mock_load,
+        patch("agent_demo.request_tool_call", return_value=message)as mock_request,
+    ):
+        with pytest.raises(pd.errors.DatabaseError, match="test query failure"):
+            answer_question(client, "哪种产品故障率最高")
+        mock_load.assert_called_once_with()
+        client.chat.completions.create.assert_not_called()
+
+
+def test_main_handles_query_failure(capsys)->None:
+    with(
+        patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-placeholder"}),
+        patch("agent_demo.OpenAI")as mock_openai,
+        patch("agent_demo.answer_question",side_effect=pd.errors.DatabaseError("test query failure"))as mock_answer,
+    ):
+        client = mock_openai.return_value.__enter__.return_value
+        main("哪种产品故障率最高")
+    output = capsys.readouterr()
+    mock_answer.assert_called_once_with(client,"哪种产品故障率最高")
+    assert output.out.strip() == "数据库查询失败，请检查数据库和 SQL 文件"
+    mock_openai.return_value.__exit__.assert_called_once()

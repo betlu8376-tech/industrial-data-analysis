@@ -14,6 +14,7 @@
 - 根据 SQL 统计生成模型报告，校验格式、数值规则及与查询结果的一致性
 - 支持流式正文显示、结束状态检查，以及 token 用量日志记录
 - 使用 DeepSeek Tool Calling 根据问题选择统计工具，校验工具参数，执行固定 SQL 后回传结果并生成回答
+- SQL 查询连接以只读模式打开数据库，Agent 命令行在查询失败时提示并结束本次问答
 - 使用 Docker 构建和运行 FastAPI 服务，通过只读挂载访问 SQLite 数据库
 
 ## 数据集
@@ -141,16 +142,16 @@ industrial-data-analysis/
 ├── run_sql.py                       # 执行 SQL 并导出结果
 ├── run_sql2.py                      # 支持命令行参数的 SQL 执行工具
 ├── api.py                           # FastAPI 查询与计算接口
-├── agent_demo.py                    # DeepSeek 三工具调用与命令行问答
+├── agent_demo.py                    # DeepSeek 四工具调用与命令行问答
 ├── deepseek_demo.py                 # 普通/流式模型报告与命令行入口
 ├── report_schema.py                 # 报告字段与数值规则
 ├── report_io.py                     # 保存通过校验的 JSON 报告
 ├── usage_log.py                     # 追加 JSONL 用量记录
 ├── usage_summary.py                 # 按模型汇总已知用量、按给定单价估算费用
 ├── logs/                            # 运行时用量日志
-├── test_run_sql2.py                 # SQL 工具测试
+├── test_run_sql2.py                 # SQL 查询、特殊路径与只读连接测试
 ├── test_api.py                      # 接口测试
-├── test_agent_demo.py               # 工具调用、分发与参数拒绝测试
+├── test_agent_demo.py               # 工具调用、参数校验与查询失败处理测试
 ├── test_deepseek_demo.py             # 模型报告、异常处理与流式测试
 ├── requirements.txt                 # FastAPI 服务运行依赖，不含全部项目依赖
 ├── Dockerfile                       # 构建 FastAPI 服务镜像
@@ -216,6 +217,18 @@ python run_sql2.py --sql sql/01_failure_summary.sql
 
 ```powershell
 Remove-Item Env:\DATABASE_PATH
+```
+
+### 查询权限和验证
+
+`run_sql2.py` 的 `execute_query()` 使用传入的数据库路径构建文件 URI，通过 `mode=ro` 和 `uri=True` 只读打开指定数据库。该连接支持统计查询，对业务数据库执行 `INSERT`、`UPDATE`、`DELETE` 等写操作会被拒绝。路径先通过 `resolve().as_uri()` 转换，以处理相对路径、中文、空格和 `#` 等字符。
+
+API 和 Agent 复用这个查询函数。`prepare_database.py` 使用自己的可写连接完成数据导入；SQL 工具的 CSV 结果仍按 `--output` 指定的目录保存。
+
+以下两个新增测试使用 `tmp_path` 创建临时数据库，验证特殊路径查询成功，以及 `UPDATE` 被拒绝后原数据保持不变：
+
+```powershell
+python -B -m pytest test_run_sql2.py -v -k "special_path or rejects_write" -p no:cacheprovider
 ```
 
 ### 4. 生成图表
@@ -511,9 +524,11 @@ python agent_demo.py "请只查询 L 类型产品的总记录数、故障数和�
 - 有工具调用时，程序处理这次回复中的一批调用。每条结果带上对应的 `tool_call_id`，全部处理后再统一请求最终回答。第二次请求不提供工具列表，当前不是根据每次结果反复决策的多轮流程。
 - 工具名称只允许上表四项，未知名称抛出 `ValueError`。模型返回的参数字符串先通过 `json.loads` 解析，再按上面的规则检查。无效 JSON 或不符合工具要求的参数会使本次调用失败。
 - 模型可能直接说明不支持某种产品类型，并未调用工具；这种回复不能证明 Python 参数校验已经执行。参数拒绝行为由自动测试单独验证。
-- Python 执行预先写好的统计 SQL，没有让模型提交任意 SQL。Docker API 的数据库挂载是只读的；本机 Agent 使用现有 SQLite 连接方式，尚未额外强制只读连接权限。
+- Python 执行预先写好的统计 SQL，没有让模型提交任意 SQL。底层 `execute_query()` 以 `mode=ro` 只读打开数据库，本机 Agent 和 API 的查询均使用该连接方式；Docker API 还使用数据库文件的只读挂载。
 - CLI 不调用报告脚本的 JSON 校验、报告保存或 token 日志功能。最终自然语言回答尚无自动数值一致性校验，工具调用记录目前只打印到终端。
-- 空白问题提示“问题不能为空”；缺少密钥时输出 `API_KEY ERROR` 并退出。HTTP、网络、数据库或工具执行异常当前向外传播，没有在此 CLI 中统一转换为友好提示，也没有应用层自动重试。
+- 空白问题提示“问题不能为空”；缺少密钥时输出 `API_KEY ERROR` 并退出。
+- 查询失败时，异常从工具执行处向上传递，停止本次问答流程，跳过生成最终回答的模型请求。`main()` 捕获 `OSError`、`sqlite3.Error` 和 `pd.errors.DatabaseError`，打印“数据库查询失败，请检查数据库和 SQL 文件”后返回。客户端由 `with OpenAI(...)` 管理，提前返回时也会退出客户端上下文。
+- HTTP、网络、工具名称或参数等其他未捕获异常仍向外传播；当前没有应用层自动重试。
 
 `agent_demo.py` 使用 DeepSeek；名字为 `deepseek_demo.py` 的旧报告脚本当前仍使用智谱和 `ZHIPU_API_KEY`。两者的服务配置、输出和异常处理不同。
 
@@ -527,6 +542,8 @@ python -B -m pytest test_agent_demo.py -v -p no:cacheprovider
 ```
 
 测试使用 Mock/patch，不发送真实模型请求，也不需要真实密钥或数据库。覆盖首次请求参数、直接回答、工具结果回传与最终正文、未知工具名拒绝、错误参数拒绝，以及前三个工具的参数化分发。第四个工具的测试覆盖 L/M/H 筛选、无匹配记录、非法参数在查询前被拒绝，以及带参数调用从请求解析到结果回传的流程。带参数流程测试只替换模型请求和底层加载函数，保留实际参数校验与筛选逻辑。
+
+查询失败测试模拟底层加载函数抛出 `pd.errors.DatabaseError`，验证 `answer_question()` 向外抛出异常且不发送最终回答请求；另一个测试验证 `main()` 捕获查询异常后输出提示，并退出客户端上下文。首次模型请求、客户端构造和查询异常均通过对应的 Mock/patch 设置，不需要真实服务调用。
 
 Mock 测试验证调用逻辑，模型是否选对工具和实际服务兼容性通过前面的真实提问检查。
 

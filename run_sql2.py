@@ -23,6 +23,9 @@ OUTPUT_NAMES = {
     "03_failure_type_summary": "failure_type_summary.csv",
 }
 
+
+
+
 def parse_args() -> argparse.Namespace:
     """解析命令行参数。"""
     parser = argparse.ArgumentParser(
@@ -67,7 +70,9 @@ def execute_query(
 
     query = sql_path.read_text(encoding="utf-8")
 
-    with closing(sqlite3.connect(database_path)) as connection:
+    database_uri = database_path.resolve().as_uri() + "?mode=ro"
+
+    with closing(sqlite3.connect(database_uri,uri=True)) as connection:
         return pd.read_sql_query(query, connection)
 
 
