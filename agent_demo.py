@@ -18,6 +18,7 @@ tools=[
             }
         }
     },
+
     {
         "type":"function",
         "function":{
@@ -30,6 +31,7 @@ tools=[
             }
         }
     },
+
 {
         "type":"function",
         "function":{
@@ -41,17 +43,50 @@ tools=[
                 "required":[],
             }
         }
+    },
+
+    {
+        "type":"function",
+        "function":{
+            "name":"get_product_type_summary",
+            "description":"查询指定产品类型的总记录数、故障数和故障率，适用于只查询 L、M 或 H 类型的请求",
+            "parameters":{
+                "type":"object",
+                "properties":{
+                    "product_type":{"type":"string","description":"要查询的产品类型","enum":["L","H","M"]}
+                },
+                "required":["product_type"]
+            }
+
+        }
     }
 ]
 
 
-def execute_tool(tool_name: str) -> list[dict[str, str | int | float]]:
+def execute_tool(tool_name: str,arguments: dict[str, object]) -> list[dict[str, str | int | float]]:
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments 必须是字典")
     if tool_name == "load_product_type_summary" :
-        return load_product_type_summary()
+        if arguments == {}:
+            return load_product_type_summary()
+        else:
+            raise ValueError("arguments must be empty")
     elif tool_name == "load_product_wear_summary":
-        return load_product_wear_summary()
+        if arguments == {}:
+            return load_product_wear_summary()
+        else:
+            raise ValueError("arguments must be empty")
     elif tool_name == "load_product_torque_summary":
-        return load_product_torque_summary()
+        if arguments == {}:
+            return load_product_torque_summary()
+        else:
+            raise ValueError("arguments must be empty")
+    elif tool_name == "get_product_type_summary":
+        if "product_type" not in arguments or len(arguments) != 1:
+            raise ValueError("必须且只能提供 product_type 参数")
+        if arguments["product_type"] not in ["L","H","M"]:
+            raise ValueError("参数错误")
+        return get_product_type_summary(arguments["product_type"])
     raise ValueError(f"未知工具：{tool_name}")
 
 
@@ -78,9 +113,8 @@ def answer_question(client: OpenAI, question: str) -> str:
     for tool_call in message.tool_calls:
         tool_name = tool_call.function.name
         arguments = json.loads(tool_call.function.arguments)
-        if arguments != {}:
-            raise ValueError("该调用不应有参数")
-        result = execute_tool(tool_name)
+
+        result = execute_tool(tool_name, arguments)
         print(f"已执行工具：{tool_name}，返回 {len(result)} 条记录")
         result_text = json.dumps(result, ensure_ascii=False)
         messages.append({"role": "tool",
@@ -93,6 +127,19 @@ def answer_question(client: OpenAI, question: str) -> str:
         extra_body={"thinking": {"type": "disabled"}},
     )
     return final_response.choices[0].message.content or ""
+
+
+
+
+
+def get_product_type_summary(product_type: str) -> list[dict[str, str | int | float]]:
+    if product_type not in ("L","H","M"):
+        raise ValueError("没有该类产品")
+    records=load_product_type_summary()
+    for record in records:
+        if record["product_type"] == product_type:
+            return [record]
+    return []
 
 
 
