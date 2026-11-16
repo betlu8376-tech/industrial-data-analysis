@@ -1,6 +1,6 @@
 import os
 import argparse
-from api import load_product_type_summary,load_product_torque_summary,load_product_wear_summary
+from api import load_product_type_summary,load_product_torque_summary,load_product_wear_summary,load_summary
 from openai import OpenAI
 import json
 
@@ -62,7 +62,20 @@ tools=[
             }
 
         }
-    }
+    },
+
+{
+        "type":"function",
+        "function":{
+            "name":"load_summary",
+            "description":"查询全部记录的总记录数、正常数、故障数和总体故障率，适合询问整体故障情况",
+            "parameters":{
+                "type":"object",
+                "properties":{},
+                "required":[],
+            }
+        }
+    },
 ]
 
 
@@ -82,6 +95,11 @@ def execute_tool(tool_name: str,arguments: dict[str, object]) -> list[dict[str, 
     elif tool_name == "load_product_torque_summary":
         if arguments == {}:
             return load_product_torque_summary()
+        else:
+            raise ValueError("arguments must be empty")
+    elif tool_name == "load_summary":
+        if arguments == {}:
+            return [load_summary()]
         else:
             raise ValueError("arguments must be empty")
     elif tool_name == "get_product_type_summary":

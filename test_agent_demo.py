@@ -302,3 +302,27 @@ def test_main_handles_query_failure(capsys)->None:
     mock_answer.assert_called_once_with(client,"哪种产品故障率最高")
     assert output.out.strip() == "数据库查询失败，请检查数据库和 SQL 文件"
     mock_openai.return_value.__exit__.assert_called_once()
+
+
+
+def test_execute_tool_summary_success()->None:
+    load_data = {
+        "total_count": 10,
+        "normal_count": 8,
+        "failure_count": 2,
+        "failure_rate_percent": 20.0,
+    }
+    with(
+        patch("agent_demo.load_summary", return_value=load_data)as mock_load,
+    ):
+        result=execute_tool("load_summary",{})
+        assert result == [load_data]
+        mock_load.assert_called_once_with()
+
+def test_execute_tool_summary_rejects_arguments()->None:
+    with(
+        patch("agent_demo.load_summary") as mock_load
+    ):
+        with pytest.raises(ValueError,match="arguments must be empty") :
+            execute_tool("load_summary", {"extra": 1})
+        mock_load.assert_not_called()
