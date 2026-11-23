@@ -2,6 +2,8 @@
 
 基于 AI4I 2020 预测性维护数据集，使用 Python、Pandas、SQLite 和 Matplotlib 分析工业设备的运行状态与故障特征，通过 FastAPI 提供统计接口，并支持使用 Docker 启动 API 服务。DeepSeek 工具调用命令行可以查询总体故障情况，以及按产品类型、刀具磨损或扭矩分组的统计结果，也支持只查询 L、M 或 H 类型。另有智谱模型报告脚本，支持普通与流式 JSON 报告生成及保存前校验。
 
+RAG 维护文档问答可从 ABB 中文低压电机手册和 Grundfos 英文水泵手册检索证据，使用 DeepSeek 生成带引用的回答。使用方法见 [RAG 维护文档问答](#rag-维护文档问答)。
+
 ## 项目目标
 
 - 使用 Pandas 完成数据读取与处理
@@ -133,7 +135,9 @@ HDF 是出现次数最多的故障类型。不同故障类型可能同时出现�
 industrial-data-analysis/
 ├── data/
 │   ├── raw/                         # 原始数据
-│   └── processed/                   # SQLite 数据库
+│   ├── processed/                   # SQLite 数据库
+│   └── knowledge/
+│       └── manuals/                 # 原厂手册和来源索引；PDF 仅保留本地
 ├── reports/
 │   ├── figures/                     # 分析图表
 │   └── *.csv                        # SQL 查询结果
@@ -577,6 +581,68 @@ python -B -m pytest -q -p no:cacheprovider
 ```
 
 运行全部测试还需要安装下文模型报告章节的依赖。以本次运行结果确认是否通过，不将以前的测试数量作为当前验收结果。
+
+## RAG 维护文档问答
+
+`rag_retriever.py` 对两份 PDF 逐页提取文字并切分，在本地用 FastEmbed 的 `BAAI/bge-small-zh-v1.5` 模型生成向量。程序按余弦相似度取前三条证据，将问题和证据发给 DeepSeek 的 `deepseek-flash`，在终端显示证据来源和回答。
+
+### 1. 准备依赖和手册
+
+在项目根目录打开 PowerShell，并使用 Python 3.13 环境。下面是本项目验证过的 RAG 依赖版本。
+
+```powershell
+python -m pip install fastembed==0.9.1 pypdf==7.1.0 openai==3.22.1
+```
+
+将两份 PDF 下载到 `data/knowledge/manuals/` 并保存为表中的文件名。脚本按自身所在目录定位资料。首次初始化 FastEmbed 会下载向量模型，后续可复用本地缓存。
+
+| 手册 | 官方来源 | 本地文件名 |
+| --- | --- | --- |
+| ABB 低压电机中文手册 `3GZF500730-85` 修订 H，2022-05 | [ABB 手册入口](https://www.abb.com/gb/en/areas/motion/motors-generators/low-voltage-motors/iec-low-voltage-motors/iec-lv-manuals)，选择编号对应的中文版本 | `abb_lv_motors_3gzf500730_85_rev_h_2022_zh.pdf` |
+| Grundfos CR、CRI、CRN 英文安装和操作手册 `96462123`，06/16 | [Grundfos PDF](https://www.grundfos.com/content/dam/local/en-in/page-assets/support/documents/1_CR.pdf) | `grundfos_cr_cri_crn_96462123_0616_en.pdf` |
+
+手册 PDF 保存在本地，由资料目录的 `.gitignore` 排除。文档 ID、版本及校验信息见[来源清单](data/knowledge/manuals/sources.json)。两份手册用于维护文档问答练习，AI4I 数据集的设备归属独立于这些资料。
+
+### 2. 设置密钥并提问
+
+程序从启动进程读取 `DEEPSEEK_API_KEY`。可以在当前 PowerShell 窗口设置，输入时密钥会被遮住。已配置 Windows 用户环境变量时，可在新开的终端直接运行。
+
+```powershell
+$secret = Read-Host '输入 DeepSeek API Key' -AsSecureString
+$env:DEEPSEEK_API_KEY = [System.Net.NetworkCredential]::new('', $secret).Password
+```
+
+先查看帮助，再把带引号的问题作为一个位置参数传入。提问命令会访问 DeepSeek API 并按账户规则消耗额度。
+
+```powershell
+python rag_retriever.py --help
+python rag_retriever.py 'ABB 低压电机做常规检查时，可以通过哪些信号或测量判断轴承状态？'
+python rag_retriever.py 'How should Grundfos CR, CRI and CRN pumps be protected if they are not used during periods of frost?'
+python rag_retriever.py '这家工厂上个月的维修支出是多少？'
+```
+
+### 3. 核对回答和证据
+
+终端用 `[编号] 文件名 第 N 页` 显示检索结果。回答里的 `[1]` 对应列表第一条证据。页码从 PDF 的第一页开始数，核对结论时可以按文件名和页码回到原文。
+
+| 验收问题 | 核对内容 |
+| --- | --- |
+| ABB 轴承状态 | ABB 手册第 19 页包含振动测量和温度测量的依据 |
+| Grundfos 停用期间防冻 | Grundfos 手册第 12 页包含防冻小节 |
+| 工厂上个月的维修支出 | 回答应说明现有手册片段无法确定支出 |
+
+双手册版本已实际验收上述 ABB 和 Grundfos 示例，回答的引用分别指向对应手册的 PDF 第 19 页和第 12 页。
+
+空命中时直接输出「现有手册片段无法回答这个问题」，模型调用次数为零。有命中但证据不足时，由模型根据证据和提示词给出说明。
+
+### 4. 运行 RAG 测试
+
+专项测试覆盖页面来源、切分、排序以及空命中和有命中的回答行为。测试使用模拟响应。
+
+```powershell
+python -m pip install pytest==9.1.1
+python -m pytest test__rag_loader.py test_rag_retriever.py -q
+```
 
 ## 模型故障报告
 

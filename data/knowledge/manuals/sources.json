@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "collected_on": "2026-11-17",
+  "purpose": "第 5 周 RAG：维护文档加载、检索和引用练习",
+  "page_number_convention": "PDF 阅读器页码，从 1 开始",
+  "documents": [
+    {
+      "document_id": "abb_lv_motors_zh_2022_h",
+      "manufacturer": "ABB",
+      "title": "低压电机：安装、操作、维护和安全手册",
+      "language": "zh-CN",
+      "document_number": "3GZF500730-85",
+      "revision": "H",
+      "edition_label": "ML 05-2022",
+      "filename": "abb_lv_motors_3gzf500730_85_rev_h_2022_zh.pdf",
+      "source_url": "https://library.e.abb.com/public/74e819e620cf4bdc9beb1959e4340b08/3GZF500730-85%20Rev%20H%20ML_05%20CHS_.pdf",
+      "landing_page_url": "https://www.abb.com/global/en/areas/motion/motors-generators/low-voltage-motors/iec-low-voltage-motors/iec-lv-manuals",
+      "downloaded_on": "2026-11-17",
+      "bytes": 4451462,
+      "sha256": "f85ae96ac593e545da8c2149c7c0f2a66d30eb40ea0d64b70f83260671ec7773",
+      "pdf_pages": 32,
+      "encrypted": false,
+      "text_extraction_check": {
+        "tool": "pypdf",
+        "nonempty_text_pages": 32,
+        "total_extracted_characters": 32021,
+        "ocr_performed": false,
+        "visual_checks_pdf_pages": [1, 19],
+        "notes": "中文文本可提取；多栏及表格的阅读顺序需要后续核对。"
+      },
+      "recommended_sections": [
+        {"section": "7.1", "topic": "常规检查", "pdf_pages": [19]},
+        {"section": "7.2", "topic": "润滑", "pdf_pages": [20, 21, 22]},
+        {"section": "10", "topic": "故障排除", "pdf_pages": [25, 26]}
+      ],
+      "rights": {
+        "copyright_holder": "ABB",
+        "open_redistribution_license_found": false,
+        "repository_policy": "原 PDF 仅保留在本地，默认由本目录 .gitignore 排除；保留官方来源和校验信息。"
+      }
+    },
+    {
+      "document_id": "grundfos_cr_en_2016_0616",
+      "manufacturer": "Grundfos",
+      "title": "CR, CRI, CRN: Installation and operating instructions",
+      "language": "en-GB",
+      "document_number": "96462123",
+      "edition_label": "0616",
+      "edition_year": 2016,
+      "filename": "grundfos_cr_cri_crn_96462123_0616_en.pdf",
+      "source_url": "https://www.grundfos.com/content/dam/local/en-in/page-assets/support/documents/1_CR.pdf",
+      "landing_page_url": "https://www.grundfos.com/in/support",
+      "downloaded_on": "2026-11-17",
+      "bytes": 4803265,
+      "sha256": "cf07b97e1cf491c0831349cbf169c7ee4c94cdd0c4e076723886c06fa0363f1c",
+      "pdf_pages": 48,
+      "encrypted": false,
+      "text_extraction_check": {
+        "tool": "pypdf",
+        "nonempty_text_pages": 48,
+        "total_extracted_characters": 112241,
+        "ocr_performed": false,
+        "visual_checks_pdf_pages": [1, 11],
+        "notes": "维护及故障页有可提取英文；附录含图纸，多栏及表格的阅读顺序需要后续核对。"
+      },
+      "recommended_sections": [
+        {"section": "9", "topic": "维护", "pdf_pages": [11]},
+        {"section": "10", "topic": "防冻", "pdf_pages": [12]},
+        {"section": "11", "topic": "服务", "pdf_pages": [12]},
+        {"section": "12", "topic": "故障排查", "pdf_pages": [13]}
+      ],
+      "rights": {
+        "copyright_holder": "Grundfos Holding A/S",
+        "open_redistribution_license_found": false,
+        "repository_policy": "原 PDF 仅保留在本地，默认由本目录 .gitignore 排除；保留官方来源和校验信息。"
+      }
+    }
+  ]
+}
