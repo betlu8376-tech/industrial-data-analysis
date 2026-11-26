@@ -644,6 +644,42 @@ python -m pip install pytest==9.1.1
 python -m pytest test__rag_loader.py test_rag_retriever.py -q
 ```
 
+## 维护工作流命令行
+
+`maintenance_workflow.py` 根据问题里的关键词选择 SQLite 统计或本地手册检索。取得证据后，程序将问题和证据交给 DeepSeek，并在终端打印 `question`、`evidence` 和 `answer` 三部分。
+
+### 1. 准备并运行
+
+在项目根目录打开 PowerShell，安装 `requirements.txt` 中的依赖，并按 [RAG 维护文档问答](#rag-维护文档问答) 一节安装 FastEmbed、pypdf 和 OpenAI SDK。运行 SQL 示例前，按[创建 SQLite 数据库](#2-创建-sqlite-数据库)一节准备本地数据库。运行手册示例前，将两份 PDF 放到 RAG 一节指定的目录。SQL 和手册示例使用当前终端中的 `DEEPSEEK_API_KEY`。
+
+```powershell
+python -B -m maintenance_workflow --help
+python -B -m maintenance_workflow '你能帮我看看吗？'
+python -B -m maintenance_workflow '总体故障率是多少？'
+python -B -m maintenance_workflow 'ABB 低压电机做常规检查时，可以通过哪些信号或测量判断轴承状态？'
+```
+
+| 验收问题 | 核对内容 |
+| --- | --- |
+| 你能帮我看看吗？ | 直接输出「请说明你要查故障统计还是维护手册。」 |
+| 总体故障率是多少？ | 使用项目示例数据库时，`evidence` 包含总记录数 10,000、故障数 339 和故障率 3.39%。 |
+| ABB 轴承状态 | 核对回答中振动和温度测量的引用编号是否指向 ABB 手册的 PDF 第 19 页。 |
+
+### 2. 路由和异常处理
+
+- 问题同时命中统计和手册关键词，或两类关键词都未命中时，程序在本地提示澄清。
+- SQL 取证目前支持包含「总体故障率」的提问。证据为空时，程序直接输出「当前证据不足，无法回答这个问题。」
+- 手册证据使用 `[编号] 文件名 第 N 页` 格式。按回答里的编号查看对应条目，再用文件名和页码核对原文。
+- DeepSeek 请求超时时，报告保留已取得的 SQL 数值或手册来源，`answer` 显示「模型请求超时，暂时无法生成结论。以下是本次检索到的证据。」
+
+### 3. 运行专项测试
+
+测试覆盖路由、证据分发、回答和报告输出，以及模型超时后保留证据并只检索一次。模型请求使用模拟客户端。
+
+```powershell
+python -B -m pytest test_maintenance_workflow.py -q -p no:cacheprovider
+```
+
 ## 模型故障报告
 
 程序读取 `sql/01_failure_summary.sql` 的统计结果，向智谱模型请求 JSON 报告。普通模式与流式模式共用报告校验和保存逻辑。

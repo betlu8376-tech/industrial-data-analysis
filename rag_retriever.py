@@ -62,19 +62,14 @@ def answer_with_context(client:OpenAI, question, hits):
 
     return final_response.choices[0].message.content
 
-
-def main(question:str):
-    question = question.strip()
-    if not question:
-        print("问题不能为空")
-        return
+def retrieve_evidence(question:str):
     model = TextEmbedding("BAAI/bge-small-zh-v1.5")
 
-    pdf_path1=Path(__file__).resolve().parent/"data/knowledge/manuals/abb_lv_motors_3gzf500730_85_rev_h_2022_zh.pdf"
-    abb_pages = load_pdf_pages(pdf_path1,"abb_lv_motors_zh_2022_h")
+    pdf_path1 = Path(__file__).resolve().parent / "data/knowledge/manuals/abb_lv_motors_3gzf500730_85_rev_h_2022_zh.pdf"
+    abb_pages = load_pdf_pages(pdf_path1, "abb_lv_motors_zh_2022_h")
 
-    pdf_path2=Path(__file__).resolve().parent/"data/knowledge/manuals/grundfos_cr_cri_crn_96462123_0616_en.pdf"
-    grundfos_pages = load_pdf_pages(pdf_path2,"grundfos_cr_en_2016_0616")
+    pdf_path2 = Path(__file__).resolve().parent / "data/knowledge/manuals/grundfos_cr_cri_crn_96462123_0616_en.pdf"
+    grundfos_pages = load_pdf_pages(pdf_path2, "grundfos_cr_en_2016_0616")
 
     pages = abb_pages + grundfos_pages
     chunks = split_pages(pages, 512, 128)
@@ -82,6 +77,15 @@ def main(question:str):
 
     query_vector = next(model.embed([question])).tolist()
     result = rank_chunks(query_vector, embedding_chunks, top_k=3)
+    return result
+
+def main(question:str):
+    question = question.strip()
+    if not question:
+        print("问题不能为空")
+        return
+
+    result = retrieve_evidence(question)
 
     with OpenAI(
             api_key=os.getenv("DEEPSEEK_API_KEY"),
